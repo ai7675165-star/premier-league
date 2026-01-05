@@ -11,8 +11,8 @@ DATA_DIR = 'data_files/'
 
 st.set_page_config(page_title="Premier League Historical Data", layout="wide", page_icon=path.join(DATA_DIR, 'favicon.ico'))
 
-st.image(path.join(DATA_DIR, 'Premier_league_logo.png'))
-st.title("Premier League Historical Data Viewer & Predictor")
+st.image(path.join(DATA_DIR, 'logo.png'), width=300)
+st.title("Premier League Predictor")
 
 csv_path = path.join(DATA_DIR, 'combined_historical_data_with_calculations.csv')
 

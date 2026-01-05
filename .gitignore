@@ -1,0 +1,72 @@
+.venv/
+venv/
+env/
+venv.bak/
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+*.egg-info/
+pip-wheel-metadata/
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Pytype
+.pytype/
+
+# Python virtualenv specific
+.Python
+
+# Mypy cache
+.mypy_cache/
+
+# Rope
+.ropeproject
+
+# Env files
+.env
+.env.*
+
+# Logs
+*.log
+
+# Editor / IDE
+.vscode/
+*.code-workspace
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# JetBrains
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code workspace file (user workspace)
+premier-league.code-workspace
+
+# Copilot instructions (local guidance)
+copilot-instructions.md
