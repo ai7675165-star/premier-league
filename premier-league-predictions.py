@@ -191,5 +191,5 @@ if st.checkbox("Show Upcoming Predictions"):
 
     st.subheader("Upcoming Match Predictions")
     st.write("*Times shown in Eastern Time (ET)*")
-    st.dataframe(upcoming_df[['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']], width=800, hide_index=True)
+    st.dataframe(upcoming_df[['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']], width='stretch', hide_index=True, height=get_dataframe_height(upcoming_df))
 

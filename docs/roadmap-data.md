@@ -1,0 +1,449 @@
+# Data Enhancement Roadmap
+
+## Current Data Sources
+- Historical match results from football-data.co.uk (2021-2026)
+- Upcoming fixtures from ESPN API
+- Basic match statistics (goals, shots, etc.)
+
+---
+
+## Priority Data Additions
+
+### 1. Player Statistics & Injuries
+**Priority:** High  
+**Impact:** Very High  
+**Data Source:** TheSportsDB API (free) or Football-Data.org API
+
+```python
+# Create: fetch_player_data.py
+import requests
+import pandas as pd
+
+def fetch_team_injuries(team_name):
+    """
+    Fetch injury list for a team
+    Free API: https://www.thesportsdb.com/api.php
+    """
+    
+    # TheSportsDB API (requires free API key)
+    API_KEY = 'your_api_key'  # Get from thesportsdb.com
+    
+    # Search for team
+    team_url = f'https://www.thesportsdb.com/api/v1/json/{API_KEY}/searchteams.php?t={team_name}'
+    team_response = requests.get(team_url)
+    team_data = team_response.json()
+    
+    if team_data['teams']:
+        team_id = team_data['teams'][0]['idTeam']
+        
+        # Get team events (includes injury info in some APIs)
+        events_url = f'https://www.thesportsdb.com/api/v1/json/{API_KEY}/eventslast.php?id={team_id}'
+        events_response = requests.get(events_url)
+        
+        return events_response.json()
+    
+    return None
+
+def create_injury_impact_feature(home_team, away_team):
+    """
+    Create feature representing injury impact
+    """
+    # Simplified - in practice, weight by player importance
+    home_injuries = count_key_injuries(home_team)
+    away_injuries = count_key_injuries(away_team)
+    
+    return {
+        'HomeInjuryCount': home_injuries,
+        'AwayInjuryCount': away_injuries,
+        'InjuryAdvantage': away_injuries - home_injuries
+    }
+```
+
+**Integration:**
+```python
+# In prepare_model_data.py
+injury_data = fetch_all_team_injuries()
+df = df.merge(injury_data, on=['HomeTeam', 'AwayTeam', 'MatchDate'])
+```
+
+---
+
+### 2. Weather Data
+**Priority:** Medium  
+**Impact:** Medium  
+**Data Source:** OpenWeatherMap API (free tier)
+
+```python
+# Create: fetch_weather_data.py
+import requests
+from datetime import datetime
+
+def fetch_match_weather(stadium_location, match_date):
+    """
+    Fetch weather conditions for match day
+    API: https://openweathermap.org/api
+    """
+    
+    API_KEY = 'your_openweather_api_key'
+    
+    # Stadium coordinates (create a mapping)
+    stadium_coords = {
+        'Old Trafford': {'lat': 53.4631, 'lon': -2.2913},
+        'Emirates Stadium': {'lat': 51.5549, 'lon': -0.1084},
+        'Anfield': {'lat': 53.4308, 'lon': -2.9608},
+        # Add all PL stadiums
+    }
+    
+    coords = stadium_coords.get(stadium_location)
+    if not coords:
+        return None
+    
+    # Historical weather API
+    url = f"https://api.openweathermap.org/data/2.5/onecall/timemachine"
+    params = {
+        'lat': coords['lat'],
+        'lon': coords['lon'],
+        'dt': int(datetime.strptime(match_date, '%Y-%m-%d').timestamp()),
+        'appid': API_KEY
+    }
+    
+    response = requests.get(url, params=params)
+    weather = response.json()
+    
+    if 'current' in weather:
+        return {
+            'Temperature': weather['current']['temp'] - 273.15,  # Convert to Celsius
+            'Humidity': weather['current']['humidity'],
+            'WindSpeed': weather['current']['wind_speed'],
+            'Precipitation': weather['current'].get('rain', {}).get('1h', 0),
+            'WeatherCondition': weather['current']['weather'][0]['main']
+        }
+    
+    return None
+
+# Create stadium mapping
+STADIUM_MAP = {
+    'Arsenal': 'Emirates Stadium',
+    'Manchester United': 'Old Trafford',
+    'Liverpool': 'Anfield',
+    # Complete for all teams
+}
+
+# Add weather features
+def add_weather_features(df):
+    """Add weather data to match dataframe"""
+    weather_features = []
+    
+    for _, match in df.iterrows():
+        stadium = STADIUM_MAP.get(match['HomeTeam'])
+        weather = fetch_match_weather(stadium, match['MatchDate'])
+        
+        if weather:
+            weather_features.append(weather)
+        else:
+            weather_features.append({
+                'Temperature': None,
+                'Humidity': None,
+                'WindSpeed': None,
+                'Precipitation': None,
+                'WeatherCondition': 'Unknown'
+            })
+    
+    weather_df = pd.DataFrame(weather_features)
+    return pd.concat([df, weather_df], axis=1)
+```
+
+**Weather Impact Categories:**
+```python
+def categorize_weather_impact(row):
+    """Categorize weather impact on match"""
+    if row['Precipitation'] > 5:
+        return 'Heavy Rain'
+    elif row['WindSpeed'] > 15:
+        return 'Windy'
+    elif row['Temperature'] < 5:
+        return 'Cold'
+    elif row['Temperature'] > 25:
+        return 'Hot'
+    else:
+        return 'Normal'
+```
+
+---
+
+### 3. Referee Statistics
+**Priority:** Medium  
+**Impact:** Medium  
+**Data:** Scrape from Premier League website
+
+```python
+# Create: fetch_referee_data.py
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+
+def scrape_referee_stats():
+    """
+    Scrape referee statistics from Premier League website
+    Cards issued, penalties given, etc.
+    """
+    
+    url = 'https://www.premierleague.com/referees'
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    
+    referee_data = []
+    
+    # Parse referee table
+    # (Implementation depends on current website structure)
+    
+    return pd.DataFrame(referee_data)
+
+# Referee features
+def create_referee_features(referee_name, referee_stats):
+    """Create features based on referee tendencies"""
+    ref_data = referee_stats[referee_stats['Referee'] == referee_name]
+    
+    if len(ref_data) == 0:
+        return {
+            'RefCardsPerGame': 3.5,  # League average
+            'RefPenaltiesPerGame': 0.3,
+            'RefHomeAdvantage': 0.0
+        }
+    
+    ref = ref_data.iloc[0]
+    return {
+        'RefCardsPerGame': ref['TotalCards'] / ref['Matches'],
+        'RefPenaltiesPerGame': ref['Penalties'] / ref['Matches'],
+        'RefHomeAdvantage': (ref['HomeWins'] - ref['AwayWins']) / ref['Matches']
+    }
+```
+
+---
+
+### 4. Advanced Team Metrics
+**Priority:** High  
+**Impact:** Very High  
+**Data:** Calculate from existing data
+
+```python
+# Add to prepare_model_data.py
+
+def calculate_advanced_metrics(df):
+    """Calculate advanced team performance metrics"""
+    
+    # Expected Goals (xG) approximation
+    df['xG_Home'] = (
+        df['HomeShotsOnTarget'] * 0.35 +  # ~35% conversion for shots on target
+        df['HomeShots'] * 0.10            # ~10% for all shots
+    )
+    
+    df['xG_Away'] = (
+        df['AwayShotsOnTarget'] * 0.35 +
+        df['AwayShots'] * 0.10
+    )
+    
+    # Expected Goals Against (xGA)
+    df['xGA_Home'] = df['xG_Away']
+    df['xGA_Away'] = df['xG_Home']
+    
+    # Goal Difference vs Expected
+    df['GoalDiff_vs_xG_Home'] = df['FullTimeHomeGoals'] - df['xG_Home']
+    df['GoalDiff_vs_xG_Away'] = df['FullTimeAwayGoals'] - df['xG_Away']
+    
+    # Shooting Efficiency
+    df['HomeShootingEfficiency'] = df['FullTimeHomeGoals'] / (df['HomeShots'] + 0.1)
+    df['AwayShootingEfficiency'] = df['FullTimeAwayGoals'] / (df['AwayShots'] + 0.1)
+    
+    # Possession Proxy (based on shots)
+    df['PossessionProxy_Home'] = df['HomeShots'] / (df['HomeShots'] + df['AwayShots'] + 0.1)
+    df['PossessionProxy_Away'] = 1 - df['PossessionProxy_Home']
+    
+    # Momentum Score (goals in last 3 games)
+    for team_col in ['HomeTeam', 'AwayTeam']:
+        prefix = 'Home' if 'Home' in team_col else 'Away'
+        
+        df[f'{prefix}Momentum'] = df.groupby(team_col).apply(
+            lambda x: x['FullTimeHomeGoals' if prefix == 'Home' else 'FullTimeAwayGoals']
+                       .rolling(3, min_periods=1).sum()
+        ).reset_index(level=0, drop=True)
+    
+    return df
+```
+
+---
+
+### 5. Betting Market Data
+**Priority:** High  
+**Impact:** High (betting odds are strong predictors)  
+**Data:** Odds API or football-data.co.uk
+
+```python
+# Enhance combine_raw_data.py to preserve odds data
+
+def extract_betting_features(df):
+    """
+    Extract features from betting odds
+    Odds already in data from football-data.co.uk
+    """
+    
+    # Implied probabilities from odds
+    if 'Bet365_HomeWinOdds' in df.columns:
+        df['ImpliedProb_HomeWin'] = 1 / df['Bet365_HomeWinOdds']
+        df['ImpliedProb_Draw'] = 1 / df['Bet365_DrawOdds']
+        df['ImpliedProb_AwayWin'] = 1 / df['Bet365_AwayWinOdds']
+        
+        # Normalize to sum to 1 (remove bookmaker margin)
+        total = df['ImpliedProb_HomeWin'] + df['ImpliedProb_Draw'] + df['ImpliedProb_AwayWin']
+        df['ImpliedProb_HomeWin'] = df['ImpliedProb_HomeWin'] / total
+        df['ImpliedProb_Draw'] = df['ImpliedProb_Draw'] / total
+        df['ImpliedProb_AwayWin'] = df['ImpliedProb_AwayWin'] / total
+        
+        # Odds movement (compare across bookmakers)
+        if 'William_Hill_HomeWinOdds' in df.columns:
+            df['OddsMovement_Home'] = df['Bet365_HomeWinOdds'] - df['William_Hill_HomeWinOdds']
+            df['OddsMovement_Away'] = df['Bet365_AwayWinOdds'] - df['William_Hill_AwayWinOdds']
+    
+    return df
+```
+
+---
+
+### 6. Social Media Sentiment
+**Priority:** Low  
+**Impact:** Low-Medium  
+**Data:** Twitter API
+
+```python
+# Create: fetch_sentiment.py
+import tweepy
+from textblob import TextBlob
+
+def get_team_sentiment(team_name, days_before=3):
+    """
+    Analyze Twitter sentiment about a team
+    Requires Twitter API credentials
+    """
+    
+    # Twitter API setup
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+    auth.set_access_token(access_token, access_token_secret)
+    api = tweepy.API(auth)
+    
+    # Search tweets
+    tweets = api.search_tweets(
+        q=f'{team_name} premier league',
+        count=100,
+        lang='en',
+        result_type='recent'
+    )
+    
+    # Analyze sentiment
+    sentiments = []
+    for tweet in tweets:
+        analysis = TextBlob(tweet.text)
+        sentiments.append(analysis.sentiment.polarity)
+    
+    if sentiments:
+        return {
+            'AvgSentiment': sum(sentiments) / len(sentiments),
+            'PositiveTweets': sum(1 for s in sentiments if s > 0.1),
+            'NegativeTweets': sum(1 for s in sentiments if s < -0.1)
+        }
+    
+    return {'AvgSentiment': 0, 'PositiveTweets': 0, 'NegativeTweets': 0}
+```
+
+---
+
+### 7. Manager & Tactical Data
+**Priority:** Medium  
+**Impact:** Medium
+
+```python
+# Create: manager_data.py
+
+MANAGER_RECORDS = {
+    'Pep Guardiola': {
+        'WinRate': 0.73,
+        'GoalsPerGame': 2.4,
+        'PreferredFormation': '4-3-3',
+        'TacticalFlexibility': 0.8
+    },
+    'Jurgen Klopp': {
+        'WinRate': 0.65,
+        'GoalsPerGame': 2.2,
+        'PreferredFormation': '4-3-3',
+        'TacticalFlexibility': 0.7
+    },
+    # Add all PL managers
+}
+
+def add_manager_features(df):
+    """Add manager-related features"""
+    
+    # Map teams to current managers (update seasonally)
+    TEAM_MANAGERS = {
+        'Manchester City': 'Pep Guardiola',
+        'Liverpool': 'Jurgen Klopp',
+        # Complete mapping
+    }
+    
+    df['HomeManager'] = df['HomeTeam'].map(TEAM_MANAGERS)
+    df['AwayManager'] = df['AwayTeam'].map(TEAM_MANAGERS)
+    
+    # Add manager stats
+    df['HomeManagerWinRate'] = df['HomeManager'].map(
+        lambda x: MANAGER_RECORDS.get(x, {}).get('WinRate', 0.5)
+    )
+    df['AwayManagerWinRate'] = df['AwayManager'].map(
+        lambda x: MANAGER_RECORDS.get(x, {}).get('WinRate', 0.5)
+    )
+    
+    return df
+```
+
+---
+
+## Data Quality Improvements
+
+### 8. Missing Data Handling
+
+```python
+# Improve in prepare_model_data.py
+
+from sklearn.impute import KNNImputer
+
+def smart_imputation(df):
+    """Use KNN imputation for missing values"""
+    
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    
+    imputer = KNNImputer(n_neighbors=5)
+    df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+    
+    return df
+```
+
+---
+
+## Implementation Priority
+
+**Phase 1 (Immediate):**
+1. Advanced team metrics (calculated from existing data)
+2. Betting odds features (already available)
+3. Better missing data handling
+
+**Phase 2 (Month 1):**
+4. Weather data integration
+5. Referee statistics
+6. Manager data
+
+**Phase 3 (Month 2):**
+7. Player injuries/suspensions
+8. Social media sentiment
+
+**Phase 4 (Future):**
+- Real-time player tracking data
+- Video analysis integration
+- Tactical formation analysis
