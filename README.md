@@ -1,3 +1,128 @@
-# premier-league
+<p align="center">
+	<img src="data_files/logo.png" alt="Pitch Oracle Logo" width="320" />
+</p>
 
-Trying out my AI prediction skills on English Premier league.
+# Premier League Predictor
+
+A friendly app and data pipeline for predicting English Premier League match outcomes.
+
+--
+
+## Table of Contents
+
+- [What this project does (for fans)](#what-this-project-does-for-fans)
+- [What's already implemented](#whats-already-implemented)
+- [Roadmaps (plans & code samples)](#roadmaps-plans--code-samples)
+- [How to run (technical)](#how-to-run-technical)
+- [Data & Credits](#data--credits)
+- [Back to top](#premier-league-predictor)
+
+--
+
+## What this project does (for fans)
+
+This project predicts the likely outcome of upcoming Premier League matches (home win, draw, or away win) using historical match data and machine learning. It also shows upcoming fixtures, kickoff times (in Eastern Time), and simple explanations of the model's predictions so fans can quickly understand which team is favored.
+
+[Back to top](#premier-league-predictor)
+
+--
+
+## What's already implemented
+
+- A data pipeline that combines historical match CSVs into a processed dataset.
+- A Streamlit app (`premier-league-predictions.py`) that:
+	- Displays historical match data and model metrics
+	- Trains an XGBoost classifier to predict match outcomes
+	- Shows upcoming fixtures and predicted probabilities
+	- Displays kickoff times converted to Eastern Time (ET)
+- An ESPN-based fixture fetcher (`fetch_upcoming_fixtures.py`) that pulls upcoming matches from ESPN's API and saves them to `data_files/upcoming_fixtures.csv`.
+- Several helper scripts and data files in `data_files/` such as `combined_historical_data_with_calculations.csv` and `all_teams.csv`.
+
+If you'd like a quick view, open the Streamlit app and check the "Show Upcoming Matches" and "Show Upcoming Predictions" sections.
+
+[Back to top](#premier-league-predictor)
+
+--
+
+## Roadmaps (plans & code samples)
+
+Detailed roadmaps and code samples have been added in the `docs/` folder. These break the work into features, model ideas, data improvements and infrastructure steps. Pick a roadmap to explore:
+
+- [Features Roadmap](docs/roadmap-features.md)
+- [Models Roadmap](docs/roadmap-models.md)
+- [Data Roadmap](docs/roadmap-data.md)
+- [Quick Wins](docs/roadmap-quick-wins.md)
+- [Infrastructure Roadmap](docs/roadmap-infrastructure.md)
+- [Roadmap Index](docs/README.md)
+
+[Back to top](#premier-league-predictor)
+
+--
+
+## How to run (technical)
+
+These instructions are for developers or power users who want to run the app locally.
+
+Prerequisites
+
+- Python 3.9+ (Windows, macOS, or Linux)
+- A virtual environment (recommended)
+
+Install dependencies (example):
+
+```bash
+python -m venv venv
+venv\Scripts\Activate.ps1  # Windows PowerShell
+# or: source venv/bin/activate  # macOS/Linux
+pip install -r requirements.txt
+```
+
+Fetch upcoming fixtures (optional) and generate processed data:
+
+```bash
+python fetch_upcoming_fixtures.py  # pulls upcoming matches from ESPN API
+python combineHistorical.py        # combine raw CSVs (if you maintain raw files)
+python prepare_model_data.py       # process and generate features
+```
+
+Run the Streamlit app:
+
+```bash
+streamlit run premier-league-predictions.py
+```
+
+Notes for developers
+
+- The Streamlit UI has checkboxes for showing raw data, upcoming matches, predictive data, and predictions.
+- Models are trained in-memory when you open the 'Show Predictive Data' section; for production you may want to train offline and load a saved model.
+- If you add third-party APIs (e.g., weather, injuries), add keys to a local `.env` and do not commit them.
+
+[Back to top](#premier-league-predictor)
+
+--
+
+## Data & Credits
+
+- Historical match data is pulled from CSVs sourced from football-data.co.uk and processed into `data_files/combined_historical_data_with_calculations.csv`.
+- Upcoming fixtures are fetched via the ESPN API (site.api.espn.com).
+- Libraries used: `pandas`, `numpy`, `xgboost`, `scikit-learn`, `streamlit`, `requests`, `beautifulsoup4`.
+
+If you reuse data or publish results, please credit the original data sources.
+
+[Back to top](#premier-league-predictor)
+
+--
+
+## Contributing
+
+If you want to contribute: fork the repo, create a feature branch, and open a pull request. See the `docs/` folder for suggested tasks and code snippets.
+
+[Back to top](#premier-league-predictor)
+
+--
+
+## License
+
+This repository does not include a license file. Add one if you plan to share or publish the code.
+
+[Back to top](#premier-league-predictor)

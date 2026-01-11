@@ -5,3 +5,13 @@ requests
 scikit-learn
 streamlit>=1.51.0
 xgboost
+plotly
+torch
+scipy
+mlflow
+redis
+fastapi
+uvicorn
+pytest
+textblob
+tweepy
