@@ -7,12 +7,8 @@ import numpy as np
 
 DATA_DIR = 'data_files/'
 
-premier_2024 = pd.read_csv(path.join(DATA_DIR, 'pl_2024.csv'))
-premier_2023 = pd.read_csv(path.join(DATA_DIR, 'pl_2023.csv'))
-premier_2022 = pd.read_csv(path.join(DATA_DIR, 'pl_2022.csv'))
-premier_2021 = pd.read_csv(path.join(DATA_DIR, 'pl_2021.csv'))
-# print(premier_2022.head(50))
-historical_data = pd.concat([premier_2021, premier_2022, premier_2023, premier_2024], ignore_index=True)
+# Load the combined raw historical data
+historical_data = pd.read_csv(path.join(DATA_DIR, 'combined_historical_data.csv'), sep='\t')
 
 column_rename_map = {
     # General Info

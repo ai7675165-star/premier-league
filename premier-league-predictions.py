@@ -9,12 +9,37 @@ from sklearn.inspection import permutation_importance
 
 DATA_DIR = 'data_files/'
 
-st.set_page_config(page_title="Premier League Historical Data", layout="wide", page_icon=path.join(DATA_DIR, 'favicon.ico'))
+st.set_page_config(page_title="Pitch Oracle - Premier League Historical Data", layout="wide", page_icon=path.join(DATA_DIR, 'favicon.ico'))
 
-st.image(path.join(DATA_DIR, 'logo.png'), width=300)
+st.image(path.join(DATA_DIR, 'logo.png'), width=250)
 st.title("Premier League Predictor")
 
 csv_path = path.join(DATA_DIR, 'combined_historical_data_with_calculations.csv')
+
+def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_height=600):
+    """
+    Calculate the optimal height for a Streamlit dataframe based on number of rows.
+    
+    Args:
+        df (pd.DataFrame): The dataframe to display
+        row_height (int): Height per row in pixels. Default: 35
+        header_height (int): Height of header row in pixels. Default: 38
+        padding (int): Extra padding in pixels. Default: 2
+        max_height (int): Maximum height cap in pixels. Default: 600 (None for no limit)
+    
+    Returns:
+        int: Calculated height in pixels
+    
+    Example:
+        height = get_dataframe_height(my_df)
+        st.dataframe(my_df, height=height)
+    """
+    num_rows = len(df)
+    calculated_height = (num_rows * row_height) + header_height + padding
+    
+    if max_height is not None:
+        return min(calculated_height, max_height)
+    return calculated_height
 
 if not path.exists(csv_path):
     st.warning(f"No historical data file found at `{csv_path}`. Please add your CSV file to get started.")
@@ -24,7 +49,19 @@ df = pd.read_csv(csv_path, sep='\t')
 
 if st.checkbox("Show Raw Data"):
     st.subheader("Historical Data")
-    st.dataframe(df)
+    df = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
+    st.dataframe(df, height=get_dataframe_height(df), width=None, hide_index=True)
+
+if st.checkbox("Show Upcoming Matches"):
+    upcoming_csv = path.join(DATA_DIR, 'upcoming_fixtures.csv')
+    if not path.exists(upcoming_csv):
+        st.warning(f"No upcoming fixtures file found at `{upcoming_csv}`. Please run `python fetch_upcoming_fixtures.py` to get upcoming matches.")
+    else:
+        upcoming_df = pd.read_csv(upcoming_csv)
+        st.subheader("Upcoming Premier League Matches")
+        st.write(f"Found {len(upcoming_df)} upcoming matches")
+        st.write("*Times shown in Eastern Time (ET)*")
+        st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width=None, hide_index=True)
 
 if st.checkbox("Show Predictive Data"):
 
@@ -98,5 +135,61 @@ if st.checkbox("Show Predictive Data"):
         'StdImportance': std_importance
     }).rename(columns={'MeanImportance': 'Mean Importance (%)', 'StdImportance': 'Std Importance (%)'}).sort_values('Mean Importance (%)', ascending=False)
 
-    st.dataframe(importance_df, width=600, hide_index=True)
+    st.dataframe(importance_df, width=600, hide_index=True, height=get_dataframe_height(importance_df))
+
+if st.checkbox("Show Upcoming Predictions"):
+
+    # Load upcoming fixtures
+    upcoming_csv = path.join(DATA_DIR, 'upcoming_fixtures.csv')
+    if not path.exists(upcoming_csv):
+        st.warning(f"No upcoming fixtures file found at `{upcoming_csv}`. Please run fetch_upcoming_fixtures.py to get upcoming matches.")
+        st.stop()
+
+    upcoming_df = pd.read_csv(upcoming_csv)
+
+    # Load team stats
+    all_teams = pd.read_csv(path.join(DATA_DIR, 'all_teams.csv'), sep='\t')
+
+    # Merge team stats for home and away
+    upcoming_df = pd.merge(
+        upcoming_df,
+        all_teams[['Team', 'TeamId', 'HomeGoalsAve', 'HomeGoalsTotal', 'HomeGoalsHalfAve', 'HomeGoalsHalfTotal', 'HomeShotsAve', 
+            'HomeShotsTotal', 'HomeShotsOnTargetAve', 'HomeFirstHalfDifferentialAve', 'HomeGameDifferentialAve', 'HomeFirstToSecondHalfGoalRatioAve']],
+        left_on='HomeTeam', right_on='Team', how='left'
+    )
+    upcoming_df = pd.merge(
+        upcoming_df,
+        all_teams[['Team', 'AwayGoalsAve', 'AwayGoalsTotal', 'AwayGoalsHalfAve', 'AwayGoalsHalfTotal', 
+            'AwayShotsAve', 'AwayShotsTotal', 'AwayShotsOnTargetAve', 'AwayFirstHalfDifferentialAve', 'AwayGameDifferentialAve', 'AwayFirstToSecondHalfGoalRatioAve']],
+        left_on='AwayTeam', right_on='Team', how='left'
+    )
+
+    # Drop extra columns
+    upcoming_df.drop(columns=['Team', 'Team_Away'], inplace=True, errors='ignore')
+
+    # Prepare features (similar to training data prep)
+    X_upcoming = upcoming_df.drop(columns=['Date', 'Time', 'HomeTeam', 'AwayTeam'], errors='ignore')
+
+    # Fill NA and encode categoricals
+    for col in X_upcoming.select_dtypes(include='object').columns:
+        X_upcoming[col] = X_upcoming[col].astype('category').cat.codes
+    X_upcoming = X_upcoming.fillna(X_upcoming.mean(numeric_only=True))
+
+    # Select numeric
+    X_upcoming = X_upcoming.select_dtypes(include=[np.number])
+
+    # Clean column names
+    X_upcoming.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X_upcoming.columns]
+
+    # Predict probabilities
+    proba = model.predict_proba(X_upcoming)
+
+    # Add predictions to df
+    upcoming_df['HomeWin_Prob'] = proba[:, 0]
+    upcoming_df['Draw_Prob'] = proba[:, 1]
+    upcoming_df['AwayWin_Prob'] = proba[:, 2]
+
+    st.subheader("Upcoming Match Predictions")
+    st.write("*Times shown in Eastern Time (ET)*")
+    st.dataframe(upcoming_df[['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']], width=800, hide_index=True)
 
