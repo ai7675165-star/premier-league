@@ -4,6 +4,7 @@ import pandas as pd
 from os import path
 import os
 import numpy as np
+from scrape_injuries_web import scrape_football_injury_news as scrape_premier_injuries, create_injury_features
 
 DATA_DIR = 'data_files/'
 
@@ -355,6 +356,11 @@ historical_data_with_calculations = pd.merge(
 
 # Optionally drop the extra 'Team' columns from the merges
 historical_data_with_calculations.drop(columns=['Team', 'Team_Away'], inplace=True, errors='ignore')
+
+# Add injury data
+print("Scraping injury data from PremierInjuries.com...")
+injury_df = scrape_premier_injuries()
+historical_data_with_calculations = create_injury_features(historical_data_with_calculations, injury_df)
 
 # Save the result (all match-level fields are already present)
 historical_data_with_calculations.to_csv(
