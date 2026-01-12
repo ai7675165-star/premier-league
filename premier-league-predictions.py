@@ -63,7 +63,15 @@ if st.checkbox("Show Upcoming Matches"):
         st.write("*Times shown in Eastern Time (ET)*")
         st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width=None, hide_index=True)
 
-if st.checkbox("Show Predictive Data"):
+# Initialize variables
+model_trained = False
+X_train, X_test, y_train, y_test, model, mae, acc = None, None, None, None, None, None, None
+
+# Check which features user wants to see
+show_predictive = st.checkbox("Show Predictive Data", key="show_predictive_data")
+show_upcoming = st.checkbox("Show Upcoming Predictions", key="show_upcoming_predictions")
+
+if show_predictive or show_upcoming:
 
     # --- Data Preparation ---
     # Assume columns: HomeTeam, AwayTeam, FullTimeResult, plus features
@@ -76,7 +84,9 @@ if st.checkbox("Show Predictive Data"):
     drop_cols = [
         'MatchDate', 'KickoffTime', 'FullTimeResult', 'HomeTeam', 'AwayTeam', 'WinningTeam',
         'HomeWin', 'AwayWin', 'Draw',  'HalfTimeHomeWin', 'HalfTimeAwayWin', 'HalfTimeDraw', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
-        'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals', 'HomePoints', 'AwayPoints'
+        'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals', 'HomePoints', 'AwayPoints',
+        'HomeShots', 'AwayShots', 'HomeShotsOnTarget', 'AwayShotsOnTarget', 'HomeFouls', 'AwayFouls', 
+        'HomeCorners', 'AwayCorners', 'HomeYellowCards', 'AwayYellowCards', 'HomeRedCards', 'AwayRedCards'
     ]
     X = df.drop(columns=[col for col in drop_cols if col in df.columns] + ['target'], errors='ignore')
     y = df['target']
@@ -113,31 +123,41 @@ if st.checkbox("Show Predictive Data"):
     mae = mean_absolute_error(y_test, y_pred)
     acc = accuracy_score(y_test, y_pred)
 
+    model_trained = True
+
+@st.cache_data
+def calculate_feature_importance(_model, _X_test, _y_test, _feature_names):
+    n_runs = 10  # Reduced from 20 for better performance
+    importances = np.zeros((n_runs, _X_test.shape[1]))
+
+    for i in range(n_runs):
+        result = permutation_importance(_model, _X_test, _y_test, n_repeats=1, random_state=42+i, scoring='accuracy')
+        importances[i, :] = result.importances_mean
+
+    mean_importance = (importances.mean(axis=0) * 100)
+    std_importance = (importances.std(axis=0) * 100)
+    importance_df = pd.DataFrame({
+        'Feature': _feature_names,
+        'MeanImportance': mean_importance,
+        'StdImportance': std_importance
+    }).rename(columns={'MeanImportance': 'Mean Importance (%)', 'StdImportance': 'Std Importance (%)'}).sort_values('Mean Importance (%)', ascending=False)
+    
+    return importance_df
+
+if show_predictive and model_trained:
     st.subheader("Model Performance")
     st.write(f"Mean Absolute Error (MAE): **{mae:.3f}**")
     st.write(f"Accuracy: **{acc:.3f}**")
 
     # --- Monte Carlo Permutation Importance ---
     st.subheader("Monte Carlo Feature Importance (Permutation)")
+    
+    if st.button("Calculate Feature Importance", key="calc_importance"):
+        with st.spinner("Calculating feature importance... This may take a moment."):
+            importance_df = calculate_feature_importance(model, X_test, y_test, X_train.columns)
+        st.dataframe(importance_df, width=600, hide_index=True, height=get_dataframe_height(importance_df))
 
-    n_runs = 20
-    importances = np.zeros((n_runs, X.shape[1]))
-
-    for i in range(n_runs):
-        result = permutation_importance(model, X_test, y_test, n_repeats=1, random_state=42+i, scoring='accuracy')
-        importances[i, :] = result.importances_mean
-
-    mean_importance = (importances.mean(axis=0) * 100)
-    std_importance = (importances.std(axis=0) * 100)
-    importance_df = pd.DataFrame({
-        'Feature': X.columns,
-        'MeanImportance': mean_importance,
-        'StdImportance': std_importance
-    }).rename(columns={'MeanImportance': 'Mean Importance (%)', 'StdImportance': 'Std Importance (%)'}).sort_values('Mean Importance (%)', ascending=False)
-
-    st.dataframe(importance_df, width=600, hide_index=True, height=get_dataframe_height(importance_df))
-
-if st.checkbox("Show Upcoming Predictions"):
+if show_upcoming and model_trained:
 
     # Load upcoming fixtures
     upcoming_csv = path.join(DATA_DIR, 'upcoming_fixtures.csv')
@@ -181,6 +201,26 @@ if st.checkbox("Show Upcoming Predictions"):
     # Clean column names
     X_upcoming.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X_upcoming.columns]
 
+    # Ensure all features match the trained model
+    expected_features = model.feature_names_in_
+    for feature in expected_features:
+        if feature not in X_upcoming.columns:
+            # Add missing feature with appropriate default from training data
+            if feature in df.columns:
+                if df[feature].dtype in ['int64', 'float64']:
+                    X_upcoming[feature] = df[feature].mean()
+                elif df[feature].dtype == 'object':
+                    # For categorical features, use the most frequent encoded value
+                    codes = df[feature].astype('category').cat.codes
+                    X_upcoming[feature] = codes.mode()[0]
+                else:
+                    X_upcoming[feature] = 0  # Default for other types
+            else:
+                X_upcoming[feature] = 0  # Default for features not in historical data
+
+    # Reorder columns to match
+    X_upcoming = X_upcoming[expected_features]
+
     # Predict probabilities
     proba = model.predict_proba(X_upcoming)
 
@@ -189,7 +229,14 @@ if st.checkbox("Show Upcoming Predictions"):
     upcoming_df['Draw_Prob'] = proba[:, 1]
     upcoming_df['AwayWin_Prob'] = proba[:, 2]
 
+    # Prepare display dataframe with human-readable columns and percentages
+    display_df = upcoming_df[['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']].copy()
+    display_df.columns = ['Match Date', 'Kickoff Time', 'Home Team', 'Away Team', 'Home Win %', 'Draw %', 'Away Win %']
+    display_df['Home Win %'] = (display_df['Home Win %'] * 100).round(1)
+    display_df['Draw %'] = (display_df['Draw %'] * 100).round(1)
+    display_df['Away Win %'] = (display_df['Away Win %'] * 100).round(1)
+
     st.subheader("Upcoming Match Predictions")
     st.write("*Times shown in Eastern Time (ET)*")
-    st.dataframe(upcoming_df[['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']], width='stretch', hide_index=True, height=get_dataframe_height(upcoming_df))
+    st.dataframe(display_df, width='stretch', hide_index=True, height=get_dataframe_height(display_df))
 
