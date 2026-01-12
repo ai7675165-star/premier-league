@@ -297,10 +297,12 @@ def calculate_advanced_metrics(df):
 
 ---
 
-### 5. Betting Market Data
+### 5. Betting Market Data ✅ IMPLEMENTED
 **Priority:** High  
 **Impact:** High (betting odds are strong predictors)  
-**Data:** Odds API or football-data.co.uk
+**Status:** ✅ Completed - Advanced features extracted from football-data.co.uk odds
+**Features Added:** Implied probabilities, market margins, odds movement, value indicators
+**Implementation:** `extract_betting_features()` in `prepare_model_data.py`
 
 ```python
 # Enhance combine_raw_data.py to preserve odds data
@@ -455,16 +457,15 @@ def smart_imputation(df):
 
 **Phase 1 (Immediate):**
 1. Advanced team metrics (calculated from existing data)
-2. Betting odds features (already available)
-3. Better missing data handling
+2. Better missing data handling
 
 **Phase 2 (Month 1):**
-4. Weather data integration
-5. Referee statistics
-6. Manager data
+3. Weather data integration
+4. Referee statistics
+5. Manager data
 
 **Phase 3 (Month 2):**
-4. Social media sentiment
+6. Social media sentiment
 
 **Phase 4 (Future):**
 - Real-time player tracking data
@@ -481,3 +482,10 @@ def smart_imputation(df):
 **Features Added:** HomeInjuryCount, AwayInjuryCount, InjuryAdvantage  
 **Data Source:** footballinjurynews.com API (62 current injuries across 18 teams)  
 **Coverage:** 98% of historical matches enhanced with injury data
+
+### 2. Betting Market Data ✅ FULLY IMPLEMENTED
+**Completed:** January 2026  
+**Implementation:** `extract_betting_features()` in `prepare_model_data.py`  
+**Features Added:** Implied probabilities, market margins, odds movement, value indicators  
+**Data Source:** football-data.co.uk odds data (Bet365, William Hill, Pinnacle, etc.)  
+**Coverage:** All matches with available odds data enhanced
