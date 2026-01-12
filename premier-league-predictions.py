@@ -42,6 +42,32 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
         return min(calculated_height, max_height)
     return calculated_height
 
+def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats=5):
+    """
+    Calculate permutation feature importance for the model.
+    
+    Args:
+        model: Trained model
+        X_test: Test features
+        y_test: Test targets
+        feature_names: List of feature names
+        n_repeats: Number of permutation repeats
+    
+    Returns:
+        pd.DataFrame: Feature importance results
+    """
+    result = permutation_importance(model, X_test, y_test, n_repeats=n_repeats, random_state=42, scoring='accuracy')
+    
+    importance_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Importance': result.importances_mean,
+        'Importance %': result.importances_mean * 100,
+        'Std': result.importances_std
+    })
+    
+    importance_df = importance_df.sort_values('Importance', ascending=False)
+    return importance_df
+
 if not path.exists(csv_path):
     st.warning(f"No historical data file found at `{csv_path}`. Please add your CSV file to get started.")
     st.stop()
