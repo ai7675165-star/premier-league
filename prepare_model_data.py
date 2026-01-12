@@ -422,6 +422,52 @@ print("Scraping injury data from PremierInjuries.com...")
 injury_df = scrape_premier_injuries()
 historical_data_with_calculations = create_injury_features(historical_data_with_calculations, injury_df)
 
+def calculate_advanced_metrics(df):
+    """Calculate advanced team performance metrics from HISTORICAL data only"""
+    
+    df = df.sort_values('MatchDate').reset_index(drop=True)
+    
+    # First, calculate match-level metrics (these will be shifted to create historical averages)
+    df['xG_Home_Match'] = (df['HomeShotsOnTarget'] * 0.35 + df['HomeShots'] * 0.10)
+    df['xG_Away_Match'] = (df['AwayShotsOnTarget'] * 0.35 + df['AwayShots'] * 0.10)
+    df['ShootingEff_Home_Match'] = df['FullTimeHomeGoals'] / (df['HomeShots'] + 0.1)
+    df['ShootingEff_Away_Match'] = df['FullTimeAwayGoals'] / (df['AwayShots'] + 0.1)
+    df['GoalDiff_Home_Match'] = df['FullTimeHomeGoals'] - df['FullTimeAwayGoals']
+    df['GoalDiff_Away_Match'] = df['FullTimeAwayGoals'] - df['FullTimeHomeGoals']
+    
+    # Now create rolling averages from PAST matches only (using shift to exclude current match)
+    # Home team metrics
+    df['HomexG_Avg_L5'] = df.groupby('HomeTeam')['xG_Home_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['HomeShootingEff_Avg_L5'] = df.groupby('HomeTeam')['ShootingEff_Home_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['HomeMomentum_L3'] = df.groupby('HomeTeam')['FullTimeHomeGoals'].shift(1).rolling(3, min_periods=1).sum().reset_index(level=0, drop=True)
+    df['HomeGoalDiff_Avg_L5'] = df.groupby('HomeTeam')['GoalDiff_Home_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    
+    # Away team metrics
+    df['AwayxG_Avg_L5'] = df.groupby('AwayTeam')['xG_Away_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['AwayShootingEff_Avg_L5'] = df.groupby('AwayTeam')['ShootingEff_Away_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['AwayMomentum_L3'] = df.groupby('AwayTeam')['FullTimeAwayGoals'].shift(1).rolling(3, min_periods=1).sum().reset_index(level=0, drop=True)
+    df['AwayGoalDiff_Avg_L5'] = df.groupby('AwayTeam')['GoalDiff_Away_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    
+    # Drop intermediate match-level calculations
+    df = df.drop(columns=['xG_Home_Match', 'xG_Away_Match', 'ShootingEff_Home_Match', 
+                          'ShootingEff_Away_Match', 'GoalDiff_Home_Match', 'GoalDiff_Away_Match'])
+    
+    # Fill NaN values for first matches with reasonable defaults
+    df['HomexG_Avg_L5'] = df['HomexG_Avg_L5'].fillna(1.5)
+    df['AwayxG_Avg_L5'] = df['AwayxG_Avg_L5'].fillna(1.5)
+    df['HomeShootingEff_Avg_L5'] = df['HomeShootingEff_Avg_L5'].fillna(0.15)
+    df['AwayShootingEff_Avg_L5'] = df['AwayShootingEff_Avg_L5'].fillna(0.15)
+    df['HomeMomentum_L3'] = df['HomeMomentum_L3'].fillna(3.0)
+    df['AwayMomentum_L3'] = df['AwayMomentum_L3'].fillna(3.0)
+    df['HomeGoalDiff_Avg_L5'] = df['HomeGoalDiff_Avg_L5'].fillna(0.0)
+    df['AwayGoalDiff_Avg_L5'] = df['AwayGoalDiff_Avg_L5'].fillna(0.0)
+    
+    return df
+
+# Calculate advanced metrics
+print("Calculating advanced team metrics...")
+historical_data_with_calculations = calculate_advanced_metrics(historical_data_with_calculations)
+
 # Save the result (all match-level fields are already present)
 historical_data_with_calculations.to_csv(
     path.join(DATA_DIR, 'combined_historical_data_with_calculations.csv'),

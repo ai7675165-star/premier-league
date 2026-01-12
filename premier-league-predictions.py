@@ -6,6 +6,7 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, accuracy_score
 from sklearn.inspection import permutation_importance
+from team_name_mapping import normalize_team_name
 
 DATA_DIR = 'data_files/'
 
@@ -50,7 +51,7 @@ df = pd.read_csv(csv_path, sep='\t')
 if st.checkbox("Show Raw Data"):
     st.subheader("Historical Data")
     df = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
-    st.dataframe(df, height=get_dataframe_height(df), width=None, hide_index=True)
+    st.dataframe(df, height=get_dataframe_height(df), use_container_width=True, hide_index=True)
 
 if st.checkbox("Show Upcoming Matches"):
     upcoming_csv = path.join(DATA_DIR, 'upcoming_fixtures.csv')
@@ -61,7 +62,7 @@ if st.checkbox("Show Upcoming Matches"):
         st.subheader("Upcoming Premier League Matches")
         st.write(f"Found {len(upcoming_df)} upcoming matches")
         st.write("*Times shown in Eastern Time (ET)*")
-        st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width=None, hide_index=True)
+        st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), use_container_width=True, hide_index=True)
 
 # Initialize variables
 model_trained = False
@@ -115,7 +116,7 @@ if show_predictive or show_upcoming:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     # --- XGBoost Model ---
-    model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state=42)
+    model = XGBClassifier(eval_metric='mlogloss', random_state=42)
     model.fit(X_train, y_train)
 
     # --- Predictions & MAE ---
@@ -155,7 +156,7 @@ if show_predictive and model_trained:
     if st.button("Calculate Feature Importance", key="calc_importance"):
         with st.spinner("Calculating feature importance... This may take a moment."):
             importance_df = calculate_feature_importance(model, X_test, y_test, X_train.columns)
-        st.dataframe(importance_df, width=600, hide_index=True, height=get_dataframe_height(importance_df))
+        st.dataframe(importance_df, hide_index=True, height=get_dataframe_height(importance_df))
 
 if show_upcoming and model_trained:
 
@@ -166,63 +167,59 @@ if show_upcoming and model_trained:
         st.stop()
 
     upcoming_df = pd.read_csv(upcoming_csv)
+    
+    # Normalize team names to match historical data
+    upcoming_df['HomeTeam'] = upcoming_df['HomeTeam'].apply(normalize_team_name)
+    upcoming_df['AwayTeam'] = upcoming_df['AwayTeam'].apply(normalize_team_name)
 
     # Load team stats
     all_teams = pd.read_csv(path.join(DATA_DIR, 'all_teams.csv'), sep='\t')
 
-    # Merge team stats for home and away
+    # Merge home team stats (using their home performance stats)
+    home_cols = ['Team', 'TeamId', 'HomeGoalsAve', 'HomeGoalsTotal', 'HomeGoalsHalfAve', 'HomeGoalsHalfTotal', 
+                 'HomeShotsAve', 'HomeShotsTotal', 'HomeShotsOnTargetAve', 'HomeFirstHalfDifferentialAve', 
+                 'HomeGameDifferentialAve', 'HomeFirstToSecondHalfGoalRatioAve']
     upcoming_df = pd.merge(
         upcoming_df,
-        all_teams[['Team', 'TeamId', 'HomeGoalsAve', 'HomeGoalsTotal', 'HomeGoalsHalfAve', 'HomeGoalsHalfTotal', 'HomeShotsAve', 
-            'HomeShotsTotal', 'HomeShotsOnTargetAve', 'HomeFirstHalfDifferentialAve', 'HomeGameDifferentialAve', 'HomeFirstToSecondHalfGoalRatioAve']],
+        all_teams[home_cols],
         left_on='HomeTeam', right_on='Team', how='left'
     )
+    upcoming_df.drop(columns=['Team'], inplace=True)
+    
+    # Merge away team stats (using their away performance stats)
+    away_cols = ['Team', 'AwayGoalsAve', 'AwayGoalsTotal', 'AwayGoalsHalfAve', 'AwayGoalsHalfTotal', 
+                 'AwayShotsAve', 'AwayShotsTotal', 'AwayShotsOnTargetAve', 'AwayFirstHalfDifferentialAve', 
+                 'AwayGameDifferentialAve', 'AwayFirstToSecondHalfGoalRatioAve']
     upcoming_df = pd.merge(
         upcoming_df,
-        all_teams[['Team', 'AwayGoalsAve', 'AwayGoalsTotal', 'AwayGoalsHalfAve', 'AwayGoalsHalfTotal', 
-            'AwayShotsAve', 'AwayShotsTotal', 'AwayShotsOnTargetAve', 'AwayFirstHalfDifferentialAve', 'AwayGameDifferentialAve', 'AwayFirstToSecondHalfGoalRatioAve']],
+        all_teams[away_cols],
         left_on='AwayTeam', right_on='Team', how='left'
     )
-
-    # Drop extra columns
-    upcoming_df.drop(columns=['Team', 'Team_Away'], inplace=True, errors='ignore')
-
-    # Prepare features (similar to training data prep)
+    upcoming_df.drop(columns=['Team'], inplace=True)
+    
+    # Prepare features for prediction model
     X_upcoming = upcoming_df.drop(columns=['Date', 'Time', 'HomeTeam', 'AwayTeam'], errors='ignore')
-
-    # Fill NA and encode categoricals
-    for col in X_upcoming.select_dtypes(include='object').columns:
-        X_upcoming[col] = X_upcoming[col].astype('category').cat.codes
+    
+    # Fill NA
     X_upcoming = X_upcoming.fillna(X_upcoming.mean(numeric_only=True))
-
+    
     # Select numeric
     X_upcoming = X_upcoming.select_dtypes(include=[np.number])
-
+    
     # Clean column names
     X_upcoming.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X_upcoming.columns]
-
-    # Ensure all features match the trained model
-    expected_features = model.feature_names_in_
-    for feature in expected_features:
-        if feature not in X_upcoming.columns:
-            # Add missing feature with appropriate default from training data
-            if feature in df.columns:
-                if df[feature].dtype in ['int64', 'float64']:
-                    X_upcoming[feature] = df[feature].mean()
-                elif df[feature].dtype == 'object':
-                    # For categorical features, use the most frequent encoded value
-                    codes = df[feature].astype('category').cat.codes
-                    X_upcoming[feature] = codes.mode()[0]
-                else:
-                    X_upcoming[feature] = 0  # Default for other types
-            else:
-                X_upcoming[feature] = 0  # Default for features not in historical data
-
-    # Reorder columns to match
-    X_upcoming = X_upcoming[expected_features]
-
-    # Predict probabilities
-    proba = model.predict_proba(X_upcoming)
+    
+    # Train a simple model using ONLY the features we have for upcoming matches
+    # Filter historical data to same features
+    available_features = X_upcoming.columns.tolist()
+    X_simple = X[available_features]
+    
+    # Train simple model
+    simple_model = XGBClassifier(eval_metric='mlogloss', random_state=42, max_depth=4)
+    simple_model.fit(X_simple, y)
+    
+    # Predict probabilities using simple model
+    proba = simple_model.predict_proba(X_upcoming)
 
     # Add predictions to df
     upcoming_df['HomeWin_Prob'] = proba[:, 0]
@@ -238,5 +235,5 @@ if show_upcoming and model_trained:
 
     st.subheader("Upcoming Match Predictions")
     st.write("*Times shown in Eastern Time (ET)*")
-    st.dataframe(display_df, width='stretch', hide_index=True, height=get_dataframe_height(display_df))
+    st.dataframe(display_df, use_container_width=True, hide_index=True, height=get_dataframe_height(display_df))
 

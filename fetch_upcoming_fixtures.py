@@ -5,6 +5,7 @@ from os import path
 from datetime import datetime, timedelta
 import json
 from zoneinfo import ZoneInfo
+from team_name_mapping import normalize_team_name
 
 DATA_DIR = 'data_files/'
 
@@ -38,9 +39,9 @@ try:
                         away_team = None
                         for comp in competitors:
                             if comp.get('homeAway') == 'home':
-                                home_team = comp.get('team', {}).get('displayName', '')
+                                home_team = normalize_team_name(comp.get('team', {}).get('displayName', ''))
                             elif comp.get('homeAway') == 'away':
-                                away_team = comp.get('team', {}).get('displayName', '')
+                                away_team = normalize_team_name(comp.get('team', {}).get('displayName', ''))
                         
                         # Get match date and status
                         match_date = event.get('date', '')
@@ -97,9 +98,9 @@ if len(all_fixtures) == 0:
                                 away_team = None
                                 for comp in competitors:
                                     if comp.get('homeAway') == 'home':
-                                        home_team = comp.get('team', {}).get('displayName', '')
+                                        home_team = normalize_team_name(comp.get('team', {}).get('displayName', ''))
                                     elif comp.get('homeAway') == 'away':
-                                        away_team = comp.get('team', {}).get('displayName', '')
+                                        away_team = normalize_team_name(comp.get('team', {}).get('displayName', ''))
                                 
                                 # Get match date and time
                                 match_date = event.get('date', '')
