@@ -15,3 +15,6 @@ uvicorn
 pytest
 textblob
 tweepy
+openmeteo-requests
+requests-cache
+retry-requests
