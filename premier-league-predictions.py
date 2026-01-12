@@ -48,12 +48,64 @@ if not path.exists(csv_path):
 
 df = pd.read_csv(csv_path, sep='\t')
 
-if st.checkbox("Show Raw Data"):
-    st.subheader("Historical Data")
-    df = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
-    st.dataframe(df, height=get_dataframe_height(df), use_container_width=True, hide_index=True)
+# Data preparation (run for both predictive tabs)
+# --- Data Preparation ---
+# Assume columns: HomeTeam, AwayTeam, FullTimeResult, plus features
+# Encode target: 0 = HomeWin, 1 = Draw, 2 = AwayWin
+target_map = {'H': 0, 'D': 1, 'A': 2}
+df = df[df['FullTimeResult'].isin(target_map.keys())].copy()
+df['target'] = df['FullTimeResult'].map(target_map)
 
-if st.checkbox("Show Upcoming Matches"):
+# Drop columns not useful for modeling or that leak the result
+drop_cols = [
+    'MatchDate', 'KickoffTime', 'FullTimeResult', 'HomeTeam', 'AwayTeam', 'WinningTeam',
+    'HomeWin', 'AwayWin', 'Draw',  'HalfTimeHomeWin', 'HalfTimeAwayWin', 'HalfTimeDraw', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
+    'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals', 'HomePoints', 'AwayPoints',
+    'HomeShots', 'AwayShots', 'HomeShotsOnTarget', 'AwayShotsOnTarget', 'HomeFouls', 'AwayFouls', 
+    'HomeCorners', 'AwayCorners', 'HomeYellowCards', 'AwayYellowCards', 'HomeRedCards', 'AwayRedCards'
+]
+X = df.drop(columns=[col for col in drop_cols if col in df.columns] + ['target'], errors='ignore')
+y = df['target']
+
+# Fill NA and encode categoricals
+for col in X.select_dtypes(include='object').columns:
+    X[col] = X[col].astype('category').cat.codes
+X = X.fillna(X.mean(numeric_only=True))
+
+# Select only numeric columns
+X = X.select_dtypes(include=[np.number])
+
+# Clean column names for XGBoost compatibility
+X.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X.columns]
+
+# Remove columns that are not 1D or have object dtype
+bad_cols = []
+for col in X.columns:
+    if isinstance(X[col].iloc[0], (pd.Series, pd.DataFrame)) or X[col].dtype == 'O':
+        bad_cols.append(col)
+if bad_cols:
+    # st.warning(f"Removing columns with unsupported types for XGBoost: {bad_cols}")
+    X = X.drop(columns=bad_cols)
+
+# --- Train/Test Split ---
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# --- XGBoost Model ---
+model = XGBClassifier(eval_metric='mlogloss', random_state=42)
+model.fit(X_train, y_train)
+
+# --- Predictions & MAE ---
+y_pred = model.predict(X_test)
+mae = mean_absolute_error(y_test, y_pred)
+acc = accuracy_score(y_test, y_pred)
+
+model_trained = True
+
+# Create tabs for different sections
+tab1, tab2, tab3, tab4 = st.tabs(["Upcoming Matches", "Predictive Data", "Upcoming Predictions", "Raw Data"])
+
+with tab1:
+    # Load upcoming fixtures
     upcoming_csv = path.join(DATA_DIR, 'upcoming_fixtures.csv')
     if not path.exists(upcoming_csv):
         st.warning(f"No upcoming fixtures file found at `{upcoming_csv}`. Please run `python fetch_upcoming_fixtures.py` to get upcoming matches.")
@@ -64,88 +116,7 @@ if st.checkbox("Show Upcoming Matches"):
         st.write("*Times shown in Eastern Time (ET)*")
         st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), use_container_width=True, hide_index=True)
 
-# Initialize variables
-model_trained = False
-X_train, X_test, y_train, y_test, model, mae, acc = None, None, None, None, None, None, None
-
-# Check which features user wants to see
-show_predictive = st.checkbox("Show Predictive Data", key="show_predictive_data")
-show_upcoming = st.checkbox("Show Upcoming Predictions", key="show_upcoming_predictions")
-
-if show_predictive or show_upcoming:
-
-    # --- Data Preparation ---
-    # Assume columns: HomeTeam, AwayTeam, FullTimeResult, plus features
-    # Encode target: 0 = HomeWin, 1 = Draw, 2 = AwayWin
-    target_map = {'H': 0, 'D': 1, 'A': 2}
-    df = df[df['FullTimeResult'].isin(target_map.keys())].copy()
-    df['target'] = df['FullTimeResult'].map(target_map)
-
-    # Drop columns not useful for modeling or that leak the result
-    drop_cols = [
-        'MatchDate', 'KickoffTime', 'FullTimeResult', 'HomeTeam', 'AwayTeam', 'WinningTeam',
-        'HomeWin', 'AwayWin', 'Draw',  'HalfTimeHomeWin', 'HalfTimeAwayWin', 'HalfTimeDraw', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
-        'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals', 'HomePoints', 'AwayPoints',
-        'HomeShots', 'AwayShots', 'HomeShotsOnTarget', 'AwayShotsOnTarget', 'HomeFouls', 'AwayFouls', 
-        'HomeCorners', 'AwayCorners', 'HomeYellowCards', 'AwayYellowCards', 'HomeRedCards', 'AwayRedCards'
-    ]
-    X = df.drop(columns=[col for col in drop_cols if col in df.columns] + ['target'], errors='ignore')
-    y = df['target']
-
-    # Fill NA and encode categoricals
-    for col in X.select_dtypes(include='object').columns:
-        X[col] = X[col].astype('category').cat.codes
-    X = X.fillna(X.mean(numeric_only=True))
-
-    # Select only numeric columns
-    X = X.select_dtypes(include=[np.number])
-
-    # Clean column names for XGBoost compatibility
-    X.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X.columns]
-
-    # Remove columns that are not 1D or have object dtype
-    bad_cols = []
-    for col in X.columns:
-        if isinstance(X[col].iloc[0], (pd.Series, pd.DataFrame)) or X[col].dtype == 'O':
-            bad_cols.append(col)
-    if bad_cols:
-        # st.warning(f"Removing columns with unsupported types for XGBoost: {bad_cols}")
-        X = X.drop(columns=bad_cols)
-
-    # --- Train/Test Split ---
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-    # --- XGBoost Model ---
-    model = XGBClassifier(eval_metric='mlogloss', random_state=42)
-    model.fit(X_train, y_train)
-
-    # --- Predictions & MAE ---
-    y_pred = model.predict(X_test)
-    mae = mean_absolute_error(y_test, y_pred)
-    acc = accuracy_score(y_test, y_pred)
-
-    model_trained = True
-
-@st.cache_data
-def calculate_feature_importance(_model, _X_test, _y_test, _feature_names):
-    n_runs = 10  # Reduced from 20 for better performance
-    importances = np.zeros((n_runs, _X_test.shape[1]))
-
-    for i in range(n_runs):
-        result = permutation_importance(_model, _X_test, _y_test, n_repeats=1, random_state=42+i, scoring='accuracy')
-        importances[i, :] = result.importances_mean
-
-    mean_importance = (importances.mean(axis=0) * 100)
-    std_importance = (importances.std(axis=0) * 100)
-    importance_df = pd.DataFrame({
-        'Feature': _feature_names,
-        'MeanImportance': mean_importance,
-        'StdImportance': std_importance
-    }).rename(columns={'MeanImportance': 'Mean Importance (%)', 'StdImportance': 'Std Importance (%)'}).sort_values('Mean Importance (%)', ascending=False)
-    
-    return importance_df
-
-if show_predictive and model_trained:
+with tab2:
     st.subheader("Model Performance")
     st.write(f"Mean Absolute Error (MAE): **{mae:.3f}**")
     st.write(f"Accuracy: **{acc:.3f}**")
@@ -158,8 +129,7 @@ if show_predictive and model_trained:
             importance_df = calculate_feature_importance(model, X_test, y_test, X_train.columns)
         st.dataframe(importance_df, hide_index=True, height=get_dataframe_height(importance_df))
 
-if show_upcoming and model_trained:
-
+with tab3:
     # Load upcoming fixtures
     upcoming_csv = path.join(DATA_DIR, 'upcoming_fixtures.csv')
     if not path.exists(upcoming_csv):
@@ -236,4 +206,9 @@ if show_upcoming and model_trained:
     st.subheader("Upcoming Match Predictions")
     st.write("*Times shown in Eastern Time (ET)*")
     st.dataframe(display_df, use_container_width=True, hide_index=True, height=get_dataframe_height(display_df))
+
+with tab4:
+    st.subheader("Historical Data")
+    df_sorted = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
+    st.dataframe(df_sorted, height=get_dataframe_height(df_sorted), use_container_width=True, hide_index=True)
 
