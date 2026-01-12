@@ -357,6 +357,66 @@ historical_data_with_calculations = pd.merge(
 # Optionally drop the extra 'Team' columns from the merges
 historical_data_with_calculations.drop(columns=['Team', 'Team_Away'], inplace=True, errors='ignore')
 
+def extract_betting_features(df):
+    """
+    Extract advanced features from betting odds
+    Odds data is already available from football-data.co.uk
+    """
+    print("Extracting betting market features...")
+
+    # Implied probabilities from Bet365 odds
+    if 'Bet365_HomeWinOdds' in df.columns:
+        # Convert odds to implied probabilities
+        df['ImpliedProb_HomeWin'] = 1 / df['Bet365_HomeWinOdds']
+        df['ImpliedProb_Draw'] = 1 / df['Bet365_DrawOdds']
+        df['ImpliedProb_AwayWin'] = 1 / df['Bet365_AwayWinOdds']
+
+        # Normalize to sum to 1 (remove bookmaker margin)
+        total_prob = (df['ImpliedProb_HomeWin'] + df['ImpliedProb_Draw'] + df['ImpliedProb_AwayWin'])
+        df['ImpliedProb_HomeWin_Norm'] = df['ImpliedProb_HomeWin'] / total_prob
+        df['ImpliedProb_Draw_Norm'] = df['ImpliedProb_Draw'] / total_prob
+        df['ImpliedProb_AwayWin_Norm'] = df['ImpliedProb_AwayWin'] / total_prob
+
+        # Market confidence (how much margin the bookmaker is taking)
+        df['Bet365_MarketMargin'] = total_prob - 1
+
+        # Odds movement (compare Bet365 vs William Hill if available)
+        if 'WilliamHill_HomeWinOdds' in df.columns:
+            df['OddsMovement_Home'] = df['Bet365_HomeWinOdds'] - df['WilliamHill_HomeWinOdds']
+            df['OddsMovement_Away'] = df['Bet365_AwayWinOdds'] - df['WilliamHill_AwayWinOdds']
+            df['OddsMovement_Draw'] = df['Bet365_DrawOdds'] - df['WilliamHill_DrawOdds']
+        else:
+            df['OddsMovement_Home'] = 0
+            df['OddsMovement_Away'] = 0
+            df['OddsMovement_Draw'] = 0
+
+        # Odds value indicators (when odds suggest better value than actual probability)
+        # Lower odds number = higher probability
+        df['Bet365_Value_Home'] = df['ImpliedProb_HomeWin_Norm'] - (1 / df['Bet365_HomeWinOdds'])
+        df['Bet365_Value_Away'] = df['ImpliedProb_AwayWin_Norm'] - (1 / df['Bet365_AwayWinOdds'])
+        df['Bet365_Value_Draw'] = df['ImpliedProb_Draw_Norm'] - (1 / df['Bet365_DrawOdds'])
+
+        # Odds ratio features
+        df['Bet365_HomeVsDraw_Ratio'] = df['Bet365_HomeWinOdds'] / df['Bet365_DrawOdds']
+        df['Bet365_AwayVsDraw_Ratio'] = df['Bet365_AwayWinOdds'] / df['Bet365_DrawOdds']
+        df['Bet365_HomeVsAway_Ratio'] = df['Bet365_HomeWinOdds'] / df['Bet365_AwayWinOdds']
+
+    # Over/Under odds features
+    if 'Bet365_Over2_5GoalsOdds' in df.columns and 'Bet365_Under2_5GoalsOdds' in df.columns:
+        df['Bet365_OverUnder_Margin'] = (1 / df['Bet365_Over2_5GoalsOdds']) + (1 / df['Bet365_Under2_5GoalsOdds']) - 1
+        df['Bet365_ExpectedTotalGoals'] = (df['Bet365_Over2_5GoalsOdds'] + df['Bet365_Under2_5GoalsOdds']) / 2
+
+    # Asian Handicap features (if available)
+    if 'Bet365_AH_HomeOdds' in df.columns and 'Bet365_AH_AwayOdds' in df.columns:
+        ah_total = (1 / df['Bet365_AH_HomeOdds']) + (1 / df['Bet365_AH_AwayOdds'])
+        df['Bet365_AH_Margin'] = ah_total - 1
+
+    print(f"Added {len([col for col in df.columns if 'Bet365' in col or 'Implied' in col or 'OddsMovement' in col])} betting features")
+    return df
+
+# Extract betting features
+historical_data_with_calculations = extract_betting_features(historical_data_with_calculations)
+
 # Add injury data
 print("Scraping injury data from PremierInjuries.com...")
 injury_df = scrape_premier_injuries()
