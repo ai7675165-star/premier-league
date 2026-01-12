@@ -92,10 +92,16 @@ df = df.merge(injury_data, on=['HomeTeam', 'AwayTeam', 'MatchDate'])
 
 ---
 
-### 2. Weather Data
+### 2. Weather Data ✅ IMPLEMENTED
 **Priority:** Medium  
 **Impact:** Medium  
-**Data Source:** OpenWeatherMap API (free tier)
+**Data Source:** Open-Meteo API (completely free, no API key required)
+**Status:** ✅ Completed - Historical weather data integrated for all matches
+**Implementation:** `fetch_weather_data.py` + `prepare_model_data.py` integration
+**Features Added:** Temperature, Humidity, WindSpeed, Precipitation, WeatherCondition, WeatherImpact category
+**Data Source:** Open-Meteo Archive API (free historical weather data)
+**Coverage:** All historical matches enhanced with weather data (with caching for efficiency)
+**API Requirements:** None - completely free service
 
 ```python
 # Create: fetch_weather_data.py
@@ -245,52 +251,57 @@ def create_referee_features(referee_name, referee_stats):
 
 ---
 
-### 4. Advanced Team Metrics
+### 4. Advanced Team Metrics ✅ IMPLEMENTED
 **Priority:** High  
 **Impact:** Very High  
 **Data:** Calculate from existing data
+**Status:** ✅ Completed - Rolling averages from historical data only (no data leakage)
+**Implementation:** `calculate_advanced_metrics()` in `prepare_model_data.py`
+**Features Added:** xG averages, shooting efficiency, momentum scores, goal differentials
+**Data Integrity:** Uses shift(1) to ensure only past match data influences predictions
 
 ```python
 # Add to prepare_model_data.py
 
 def calculate_advanced_metrics(df):
-    """Calculate advanced team performance metrics"""
+    """Calculate advanced team performance metrics from HISTORICAL data only"""
     
-    # Expected Goals (xG) approximation
-    df['xG_Home'] = (
-        df['HomeShotsOnTarget'] * 0.35 +  # ~35% conversion for shots on target
-        df['HomeShots'] * 0.10            # ~10% for all shots
-    )
+    df = df.sort_values('MatchDate').reset_index(drop=True)
     
-    df['xG_Away'] = (
-        df['AwayShotsOnTarget'] * 0.35 +
-        df['AwayShots'] * 0.10
-    )
+    # First, calculate match-level metrics (these will be shifted to create historical averages)
+    df['xG_Home_Match'] = (df['HomeShotsOnTarget'] * 0.35 + df['HomeShots'] * 0.10)
+    df['xG_Away_Match'] = (df['AwayShotsOnTarget'] * 0.35 + df['AwayShots'] * 0.10)
+    df['ShootingEff_Home_Match'] = df['FullTimeHomeGoals'] / (df['HomeShots'] + 0.1)
+    df['ShootingEff_Away_Match'] = df['FullTimeAwayGoals'] / (df['AwayShots'] + 0.1)
+    df['GoalDiff_Home_Match'] = df['FullTimeHomeGoals'] - df['FullTimeAwayGoals']
+    df['GoalDiff_Away_Match'] = df['FullTimeAwayGoals'] - df['FullTimeHomeGoals']
     
-    # Expected Goals Against (xGA)
-    df['xGA_Home'] = df['xG_Away']
-    df['xGA_Away'] = df['xG_Home']
+    # Now create rolling averages from PAST matches only (using shift to exclude current match)
+    # Home team metrics
+    df['HomexG_Avg_L5'] = df.groupby('HomeTeam')['xG_Home_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['HomeShootingEff_Avg_L5'] = df.groupby('HomeTeam')['ShootingEff_Home_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['HomeMomentum_L3'] = df.groupby('HomeTeam')['FullTimeHomeGoals'].shift(1).rolling(3, min_periods=1).sum().reset_index(level=0, drop=True)
+    df['HomeGoalDiff_Avg_L5'] = df.groupby('HomeTeam')['GoalDiff_Home_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
     
-    # Goal Difference vs Expected
-    df['GoalDiff_vs_xG_Home'] = df['FullTimeHomeGoals'] - df['xG_Home']
-    df['GoalDiff_vs_xG_Away'] = df['FullTimeAwayGoals'] - df['xG_Away']
+    # Away team metrics
+    df['AwayxG_Avg_L5'] = df.groupby('AwayTeam')['xG_Away_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['AwayShootingEff_Avg_L5'] = df.groupby('AwayTeam')['ShootingEff_Away_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['AwayMomentum_L3'] = df.groupby('AwayTeam')['FullTimeAwayGoals'].shift(1).rolling(3, min_periods=1).sum().reset_index(level=0, drop=True)
+    df['AwayGoalDiff_Avg_L5'] = df.groupby('AwayTeam')['GoalDiff_Away_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
     
-    # Shooting Efficiency
-    df['HomeShootingEfficiency'] = df['FullTimeHomeGoals'] / (df['HomeShots'] + 0.1)
-    df['AwayShootingEfficiency'] = df['FullTimeAwayGoals'] / (df['AwayShots'] + 0.1)
+    # Drop intermediate match-level calculations
+    df = df.drop(columns=['xG_Home_Match', 'xG_Away_Match', 'ShootingEff_Home_Match', 
+                          'ShootingEff_Away_Match', 'GoalDiff_Home_Match', 'GoalDiff_Away_Match'])
     
-    # Possession Proxy (based on shots)
-    df['PossessionProxy_Home'] = df['HomeShots'] / (df['HomeShots'] + df['AwayShots'] + 0.1)
-    df['PossessionProxy_Away'] = 1 - df['PossessionProxy_Home']
-    
-    # Momentum Score (goals in last 3 games)
-    for team_col in ['HomeTeam', 'AwayTeam']:
-        prefix = 'Home' if 'Home' in team_col else 'Away'
-        
-        df[f'{prefix}Momentum'] = df.groupby(team_col).apply(
-            lambda x: x['FullTimeHomeGoals' if prefix == 'Home' else 'FullTimeAwayGoals']
-                       .rolling(3, min_periods=1).sum()
-        ).reset_index(level=0, drop=True)
+    # Fill NaN values for first matches with reasonable defaults
+    df['HomexG_Avg_L5'] = df['HomexG_Avg_L5'].fillna(1.5)
+    df['AwayxG_Avg_L5'] = df['AwayxG_Avg_L5'].fillna(1.5)
+    df['HomeShootingEff_Avg_L5'] = df['HomeShootingEff_Avg_L5'].fillna(0.15)
+    df['AwayShootingEff_Avg_L5'] = df['AwayShootingEff_Avg_L5'].fillna(0.15)
+    df['HomeMomentum_L3'] = df['HomeMomentum_L3'].fillna(3.0)
+    df['AwayMomentum_L3'] = df['AwayMomentum_L3'].fillna(3.0)
+    df['HomeGoalDiff_Avg_L5'] = df['HomeGoalDiff_Avg_L5'].fillna(0.0)
+    df['AwayGoalDiff_Avg_L5'] = df['AwayGoalDiff_Avg_L5'].fillna(0.0)
     
     return df
 ```
@@ -489,3 +500,19 @@ def smart_imputation(df):
 **Features Added:** Implied probabilities, market margins, odds movement, value indicators  
 **Data Source:** football-data.co.uk odds data (Bet365, William Hill, Pinnacle, etc.)  
 **Coverage:** All matches with available odds data enhanced
+
+### 3. Advanced Team Metrics ✅ FULLY IMPLEMENTED
+**Completed:** January 2026  
+**Implementation:** `calculate_advanced_metrics()` in `prepare_model_data.py`  
+**Features Added:** xG averages (L5), shooting efficiency (L5), momentum scores (L3), goal differentials (L5)  
+**Data Source:** Calculated from existing match statistics  
+**Data Integrity:** Uses shift(1) to prevent data leakage - only historical data influences predictions  
+**Coverage:** All historical matches enhanced with advanced performance metrics
+
+### 4. Weather Data ✅ FULLY IMPLEMENTED
+**Completed:** January 2026  
+**Implementation:** `fetch_weather_data.py` + `prepare_model_data.py` integration  
+**Features Added:** Temperature, Humidity, WindSpeed, Precipitation, WeatherCondition, WeatherImpact category  
+**Data Source:** Open-Meteo Archive API (completely free, no API key required)  
+**Coverage:** All historical matches enhanced with weather data (with caching for efficiency)  
+**API Requirements:** None - completely free service

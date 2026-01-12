@@ -5,6 +5,7 @@ from os import path
 import os
 import numpy as np
 from scrape_injuries_web import scrape_football_injury_news as scrape_premier_injuries, create_injury_features
+from fetch_weather_data import add_weather_features, add_weather_impact_category
 
 DATA_DIR = 'data_files/'
 
@@ -159,8 +160,8 @@ historical_data.rename(columns=column_rename_map, inplace=True)
 historical_data.dropna(axis=1, how='all', inplace=True)
 historical_data.drop(columns=['Division'], inplace=True, errors='ignore')
 
-# Parse MatchDate to datetime with dayfirst=True
-historical_data['MatchDate'] = pd.to_datetime(historical_data['MatchDate'], dayfirst=True, errors='coerce')
+# Parse MatchDate to datetime (already in YYYY-MM-DD format)
+historical_data['MatchDate'] = pd.to_datetime(historical_data['MatchDate'], errors='coerce')
 
 # HomeWin, AwayWin, Draw columns
 historical_data['HomeWin'] = (historical_data['FullTimeResult'] == 'H').astype(int)
@@ -320,7 +321,7 @@ historical_data['AwayTeamCumulativePoints'] = (
     historical_data.groupby(['Season', 'AwayTeam'])['AwayPoints'].cumsum() - historical_data['AwayPoints']
 )
 
-historical_data['MatchDate'] = pd.to_datetime(historical_data['MatchDate'], dayfirst=True, errors='coerce')
+historical_data['MatchDate'] = pd.to_datetime(historical_data['MatchDate'], errors='coerce')
 
 def last_match_gap(df, team_col, date_col):
     df = df.sort_values(date_col)
@@ -421,6 +422,16 @@ historical_data_with_calculations = extract_betting_features(historical_data_wit
 print("Scraping injury data from PremierInjuries.com...")
 injury_df = scrape_premier_injuries()
 historical_data_with_calculations = create_injury_features(historical_data_with_calculations, injury_df)
+
+# Add weather data
+print("Adding weather data from Open-Meteo (completely free)...")
+try:
+    historical_data_with_calculations = add_weather_features(historical_data_with_calculations)
+    historical_data_with_calculations = add_weather_impact_category(historical_data_with_calculations)
+    print("Weather data integration completed")
+except Exception as e:
+    print(f"Warning: Weather data integration failed: {e}")
+    print("Continuing without weather data...")
 
 def calculate_advanced_metrics(df):
     """Calculate advanced team performance metrics from HISTORICAL data only"""
