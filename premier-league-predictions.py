@@ -88,7 +88,8 @@ drop_cols = [
     'HomeWin', 'AwayWin', 'Draw',  'HalfTimeHomeWin', 'HalfTimeAwayWin', 'HalfTimeDraw', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
     'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals', 'HomePoints', 'AwayPoints',
     'HomeShots', 'AwayShots', 'HomeShotsOnTarget', 'AwayShotsOnTarget', 'HomeFouls', 'AwayFouls', 
-    'HomeCorners', 'AwayCorners', 'HomeYellowCards', 'AwayYellowCards', 'HomeRedCards', 'AwayRedCards'
+    'HomeCorners', 'AwayCorners', 'HomeYellowCards', 'AwayYellowCards', 'HomeRedCards', 'AwayRedCards',
+    'HomeManagerFormation', 'AwayManagerFormation'  # Excluded from model as not statistically relevant
 ]
 X = df.drop(columns=[col for col in drop_cols if col in df.columns] + ['target'], errors='ignore')
 y = df['target']
@@ -429,39 +430,74 @@ with tab4:
     
     st.dataframe(summary_display, use_container_width=True, hide_index=True)
 
-    # Manager Statistics Section
-    st.subheader("Manager Statistics")
-    st.write("Historical manager performance metrics and tactical preferences")
-
-    # Extract manager statistics from historical data
-    manager_cols = ['HomeManager', 'HomeManagerWinRate', 'HomeManagerGoalsPerGame', 'HomeManagerDefensiveSolidity',
-                   'HomeManagerAttackingThreat', 'HomeManagerTacticalFlexibility']
-    manager_stats_df = df[manager_cols].drop_duplicates(subset=['HomeManager']).dropna(subset=['HomeManager'])
-
-    # Rename columns for better display
-    manager_stats_df.columns = ['Manager', 'Win Rate', 'Goals/Game', 'Defensive Solidity',
-                               'Attacking Threat', 'Tactical Flexibility']
-
-    # Format percentages and decimals
-    percentage_cols = ['Win Rate', 'Defensive Solidity', 'Attacking Threat', 'Tactical Flexibility']
+    st.subheader("Formation Statistics")
+    st.write("Historical performance analysis by tactical formation (2021-2026)")
+    
+    # Extract formation statistics from historical data
+    formation_cols = ['HomeManagerFormation', 'AwayManagerFormation', 'FullTimeResult']
+    
+    # Analyze home formations
+    home_formation_stats = df.groupby('HomeManagerFormation').agg({
+        'FullTimeResult': ['count', lambda x: (x == 'H').mean(), lambda x: (x == 'D').mean(), lambda x: (x == 'A').mean()]
+    }).round(4)
+    
+    home_formation_stats.columns = ['Matches', 'Home_Win_Rate', 'Draw_Rate', 'Away_Win_Rate']
+    home_formation_stats = home_formation_stats.sort_values('Home_Win_Rate', ascending=False)
+    
+    # Analyze away formations
+    away_formation_stats = df.groupby('AwayManagerFormation').agg({
+        'FullTimeResult': ['count', lambda x: (x == 'H').mean(), lambda x: (x == 'D').mean(), lambda x: (x == 'A').mean()]
+    }).round(4)
+    
+    away_formation_stats.columns = ['Matches', 'Home_Win_Rate', 'Draw_Rate', 'Away_Win_Rate']
+    away_formation_stats = away_formation_stats.sort_values('Away_Win_Rate', ascending=False)
+    
+    # Create combined display
+    combined_stats = []
+    for formation in home_formation_stats.index:
+        if formation in away_formation_stats.index:
+            home_stats = home_formation_stats.loc[formation]
+            away_stats = away_formation_stats.loc[formation]
+            combined_stats.append({
+                'Formation': formation,
+                'Home Matches': int(home_stats['Matches']),
+                'Home Win Rate': home_stats['Home_Win_Rate'],
+                'Away Matches': int(away_stats['Matches']),
+                'Away Win Rate': away_stats['Away_Win_Rate'],
+                'Total Matches': int(home_stats['Matches'] + away_stats['Matches'])
+            })
+    
+    formation_df = pd.DataFrame(combined_stats).sort_values('Total Matches', ascending=False)
+    
+    # Format percentages
+    percentage_cols = ['Home Win Rate', 'Away Win Rate']
     for col in percentage_cols:
-        if col in manager_stats_df.columns:
-            manager_stats_df[col] = (manager_stats_df[col] * 100).round(1)
-
-    decimal_cols = ['Goals/Game']
-    for col in decimal_cols:
-        if col in manager_stats_df.columns:
-            manager_stats_df[col] = manager_stats_df[col].round(2)
-
-    st.write(f"**Total Managers:** {len(manager_stats_df)}")
-    st.write("**Key Metrics:**")
-    st.write("- **Win Rate**: Historical winning percentage")
-    st.write("- **Goals/Game**: Average goals scored per match under this manager")
-    st.write("- **Defensive Solidity**: Rating of defensive organization (higher = better)")
-    st.write("- **Attacking Threat**: Rating of attacking potency (higher = better)")
-    st.write("- **Tactical Flexibility**: Ability to adapt formations and tactics")
-
-    st.dataframe(manager_stats_df, use_container_width=True, hide_index=True, height=get_dataframe_height(manager_stats_df))
+        if col in formation_df.columns:
+            formation_df[col] = (formation_df[col] * 100).round(1)
+    
+    st.write(f"**Total Formations Analyzed:** {len(formation_df)}")
+    st.write("**Key Insights:**")
+    st.write("- **Home Win Rate**: Percentage of matches won when using this formation at home")
+    st.write("- **Away Win Rate**: Percentage of matches won when using this formation away")
+    st.write("- **Note**: Formations are associated with managers and may correlate with team quality")
+    
+    st.dataframe(formation_df, use_container_width=True, hide_index=True, height=get_dataframe_height(formation_df))
+    
+    # Add formation summary
+    st.subheader("Formation Summary")
+    st.write("**Formation popularity and performance overview:**")
+    
+    # Calculate summary statistics
+    summary_stats = {
+        'Most Popular Formation': formation_df.loc[formation_df['Total Matches'].idxmax(), 'Formation'],
+        'Highest Home Win Rate': f"{formation_df.loc[formation_df['Home Win Rate'].idxmax(), 'Formation']} ({formation_df['Home Win Rate'].max()}%)",
+        'Highest Away Win Rate': f"{formation_df.loc[formation_df['Away Win Rate'].idxmax(), 'Formation']} ({formation_df['Away Win Rate'].max()}%)",
+        'Average Home Win Rate': f"{formation_df['Home Win Rate'].mean():.1f}%",
+        'Average Away Win Rate': f"{formation_df['Away Win Rate'].mean():.1f}%"
+    }
+    
+    summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
 with tab5:
     st.subheader("Historical Data")

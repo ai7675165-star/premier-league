@@ -593,6 +593,8 @@ def add_manager_features(df):
             'AwayManagerAttackingThreat': away_stats['AttackingThreat'],
             'HomeManagerTacticalFlexibility': home_stats['TacticalFlexibility'],
             'AwayManagerTacticalFlexibility': away_stats['TacticalFlexibility'],
+            'HomeManagerFormation': home_stats['PreferredFormation'],
+            'AwayManagerFormation': away_stats['PreferredFormation'],
             'ManagerWinRateDiff': advantages['ManagerWinRateDiff'],
             'ManagerGoalsPerGameDiff': advantages['ManagerGoalsPerGameDiff'],
             'ManagerDefensiveAdvantage': advantages['ManagerDefensiveAdvantage'],
@@ -603,11 +605,15 @@ def add_manager_features(df):
     manager_df = pd.DataFrame(manager_features)
     df = pd.concat([df, manager_df], axis=1)
 
-    # Fill any missing values with league averages
+    # Fill any missing values with league averages for numeric columns
     manager_cols = manager_df.columns
     for col in manager_cols:
         if col in df.columns:
-            df[col] = df[col].fillna(df[col].mean())
+            if df[col].dtype in ['float64', 'int64']:
+                df[col] = df[col].fillna(df[col].mean())
+            # For categorical columns like formations, fill with most common
+            elif col in ['HomeManagerFormation', 'AwayManagerFormation']:
+                df[col] = df[col].fillna('4-3-3')  # Most common formation
 
     print(f"Added manager features for {len(df)} matches")
     return df
