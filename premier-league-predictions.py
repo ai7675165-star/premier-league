@@ -15,7 +15,7 @@ st.set_page_config(page_title="Pitch Oracle - Premier League Historical Data", l
 st.image(path.join(DATA_DIR, 'logo.png'), width=250)
 st.title("Premier League Predictor")
 
-csv_path = path.join(DATA_DIR, 'combined_historical_data_with_calculations.csv')
+csv_path = path.join(DATA_DIR, 'combined_historical_data_with_calculations_new.csv')
 
 def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_height=600):
     """
@@ -128,7 +128,7 @@ acc = accuracy_score(y_test, y_pred)
 model_trained = True
 
 # Create tabs for different sections
-tab1, tab2, tab3, tab4 = st.tabs(["Upcoming Matches", "Predictive Data", "Upcoming Predictions", "Raw Data"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Upcoming Matches", "Predictive Data", "Upcoming Predictions", "Statistics", "Raw Data"])
 
 with tab1:
     # Load upcoming fixtures
@@ -193,6 +193,40 @@ with tab3:
     )
     upcoming_df.drop(columns=['Team'], inplace=True)
     
+    # Load and merge referee data if available
+    referee_csv = path.join(DATA_DIR, 'scraped_referees_test.csv')
+    if path.exists(referee_csv):
+        referee_df = pd.read_csv(referee_csv)
+        referee_df['HomeTeam'] = referee_df['HomeTeam'].apply(normalize_team_name)
+        referee_df['AwayTeam'] = referee_df['AwayTeam'].apply(normalize_team_name)
+        
+        # Merge referee assignments with upcoming fixtures
+        upcoming_df = pd.merge(
+            upcoming_df,
+            referee_df[['Date', 'HomeTeam', 'AwayTeam', 'Referee']],
+            on=['Date', 'HomeTeam', 'AwayTeam'],
+            how='left'
+        )
+        
+        # Load historical referee statistics
+        historical_referee_stats = df[['Referee', 'RefYellowCardsPerGame', 'RefRedCardsPerGame', 'RefFoulsPerGame', 
+                                       'RefHomeAdvantageYellow', 'RefHomeWinRate', 'RefAwayWinRate', 'RefDrawRate']].drop_duplicates()
+        
+        # Merge referee statistics
+        upcoming_df = pd.merge(
+            upcoming_df,
+            historical_referee_stats,
+            on='Referee',
+            how='left'
+        )
+        
+        # Fill missing referee stats with league averages
+        ref_cols = ['RefYellowCardsPerGame', 'RefRedCardsPerGame', 'RefFoulsPerGame', 
+                   'RefHomeAdvantageYellow', 'RefHomeWinRate', 'RefAwayWinRate', 'RefDrawRate']
+        for col in ref_cols:
+            if col in upcoming_df.columns:
+                upcoming_df[col] = upcoming_df[col].fillna(df[col].mean())
+    
     # Prepare features for prediction model
     X_upcoming = upcoming_df.drop(columns=['Date', 'Time', 'HomeTeam', 'AwayTeam'], errors='ignore')
     
@@ -223,17 +257,106 @@ with tab3:
     upcoming_df['AwayWin_Prob'] = proba[:, 2]
 
     # Prepare display dataframe with human-readable columns and percentages
-    display_df = upcoming_df[['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']].copy()
-    display_df.columns = ['Match Date', 'Kickoff Time', 'Home Team', 'Away Team', 'Home Win %', 'Draw %', 'Away Win %']
+    display_cols = ['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']
+    if 'Referee' in upcoming_df.columns:
+        display_cols.insert(4, 'Referee')
+    
+    display_df = upcoming_df[display_cols].copy()
+    display_df.columns = ['Match Date', 'Kickoff Time', 'Home Team', 'Away Team'] + \
+                        (['Referee'] if 'Referee' in upcoming_df.columns else []) + \
+                        ['Home Win %', 'Draw %', 'Away Win %']
     display_df['Home Win %'] = (display_df['Home Win %'] * 100).round(1)
     display_df['Draw %'] = (display_df['Draw %'] * 100).round(1)
     display_df['Away Win %'] = (display_df['Away Win %'] * 100).round(1)
 
     st.subheader("Upcoming Match Predictions")
     st.write("*Times shown in Eastern Time (ET)*")
+    if 'Referee' in upcoming_df.columns:
+        st.write("✅ **Referee data integrated** - Predictions now include referee statistics from historical matches")
     st.dataframe(display_df, use_container_width=True, hide_index=True, height=get_dataframe_height(display_df))
 
 with tab4:
+    st.subheader("Referee Statistics")
+    st.write("Historical referee performance metrics calculated from Premier League matches (2021-2026)")
+    
+    # Extract referee statistics from historical data
+    referee_cols = ['Referee', 'RefTotalMatches', 'RefYellowCardsPerGame', 'RefRedCardsPerGame', 
+                   'RefFoulsPerGame', 'RefHomeAdvantageYellow', 'RefHomeWinRate', 'RefAwayWinRate', 'RefDrawRate']
+    
+    referee_stats_df = df[referee_cols].drop_duplicates().sort_values('RefTotalMatches', ascending=False)
+    
+    # Rename columns for better display
+    referee_stats_df.columns = ['Referee', 'Total Matches', 'Yellow Cards/Game', 'Red Cards/Game', 
+                               'Fouls/Game', 'Home Yellow Advantage', 'Home Win Rate', 'Away Win Rate', 'Draw Rate']
+    
+    # Format percentages
+    percentage_cols = ['Home Win Rate', 'Away Win Rate', 'Draw Rate']
+    for col in percentage_cols:
+        if col in referee_stats_df.columns:
+            referee_stats_df[col] = (referee_stats_df[col] * 100).round(1)
+    
+    # Format decimal columns
+    decimal_cols = ['Yellow Cards/Game', 'Red Cards/Game', 'Fouls/Game', 'Home Yellow Advantage']
+    for col in decimal_cols:
+        if col in referee_stats_df.columns:
+            referee_stats_df[col] = referee_stats_df[col].round(2)
+    
+    st.write(f"**Total Referees:** {len(referee_stats_df)}")
+    st.write("**Key Metrics:**")
+    st.write("- **Yellow/Red Cards per Game**: Disciplinary strictness indicators")
+    st.write("- **Home Yellow Advantage**: Positive values indicate referees give more yellow cards to home teams")
+    st.write("- **Win Rates**: Historical outcome percentages when referee officiates")
+    
+    st.dataframe(referee_stats_df, use_container_width=True, hide_index=True, height=get_dataframe_height(referee_stats_df))
+    
+    # Add summary statistics
+    st.subheader("Summary Statistics")
+    st.write("**League-wide averages across all referees:**")
+    
+    # Calculate averages for numeric columns
+    numeric_cols = ['Total Matches', 'Yellow Cards/Game', 'Red Cards/Game', 'Fouls/Game', 'Home Yellow Advantage']
+    percentage_cols = ['Home Win Rate', 'Away Win Rate', 'Draw Rate']
+    
+    # Create summary dataframe
+    summary_data = {}
+    
+    # Numeric columns - calculate mean
+    for col in numeric_cols:
+        if col in referee_stats_df.columns:
+            # Convert back to raw values for percentage columns
+            if col in ['Home Win Rate', 'Away Win Rate', 'Draw Rate']:
+                raw_values = referee_stats_df[col] / 100  # Convert back from percentage
+                summary_data[col] = raw_values.mean()
+            else:
+                summary_data[col] = referee_stats_df[col].mean()
+    
+    # Percentage columns - calculate mean and format as percentage
+    for col in percentage_cols:
+        if col in referee_stats_df.columns:
+            raw_values = referee_stats_df[col] / 100  # Convert back from percentage
+            summary_data[col] = raw_values.mean()
+    
+    # Create summary dataframe
+    summary_df = pd.DataFrame([summary_data])
+    
+    # Format the display
+    summary_display = summary_df.copy()
+    for col in percentage_cols:
+        if col in summary_display.columns:
+            summary_display[col] = (summary_display[col] * 100).round(1)
+    
+    for col in ['Yellow Cards/Game', 'Red Cards/Game', 'Fouls/Game', 'Home Yellow Advantage']:
+        if col in summary_display.columns:
+            summary_display[col] = summary_display[col].round(2)
+    
+    # Rename columns for display
+    summary_display.columns = ['Avg Total Matches', 'Avg Yellow Cards/Game', 'Avg Red Cards/Game', 
+                              'Avg Fouls/Game', 'Avg Home Yellow Advantage', 'Avg Home Win %', 
+                              'Avg Away Win %', 'Avg Draw %']
+    
+    st.dataframe(summary_display, use_container_width=True, hide_index=True)
+
+with tab5:
     st.subheader("Historical Data")
     df_sorted = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
     st.dataframe(df_sorted, height=get_dataframe_height(df_sorted), use_container_width=True, hide_index=True)
