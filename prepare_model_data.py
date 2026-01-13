@@ -6,6 +6,7 @@ import os
 import numpy as np
 from scrape_injuries_web import scrape_football_injury_news as scrape_premier_injuries, create_injury_features
 from fetch_weather_data import add_weather_features, add_weather_impact_category
+from manager_data import get_current_manager, get_manager_stats, calculate_manager_advantage
 
 DATA_DIR = 'data_files/'
 
@@ -547,12 +548,80 @@ def calculate_referee_statistics(df):
     print(f"Added referee statistics for {len(ref_stats_df)} referees")
     return df
 
+def add_manager_features(df):
+    """
+    Add manager-related features to the dataset.
+
+    Args:
+        df (pd.DataFrame): Historical match data
+
+    Returns:
+        pd.DataFrame: Data with manager features added
+    """
+    print("Adding manager features...")
+
+    # Map teams to managers based on match date
+    df['HomeManager'] = df.apply(lambda row: get_current_manager(row['HomeTeam'], row['MatchDate']), axis=1)
+    df['AwayManager'] = df.apply(lambda row: get_current_manager(row['AwayTeam'], row['MatchDate']), axis=1)
+
+    # Add manager statistics
+    manager_features = []
+    for _, row in df.iterrows():
+        home_manager = row['HomeManager']
+        away_manager = row['AwayManager']
+
+        home_stats = get_manager_stats(home_manager) if home_manager else {
+            'WinRate': 0.45, 'GoalsPerGame': 1.4, 'PreferredFormation': '4-3-3',
+            'TacticalFlexibility': 0.65, 'DefensiveSolidity': 0.70, 'AttackingThreat': 0.65
+        }
+        away_stats = get_manager_stats(away_manager) if away_manager else {
+            'WinRate': 0.45, 'GoalsPerGame': 1.4, 'PreferredFormation': '4-3-3',
+            'TacticalFlexibility': 0.65, 'DefensiveSolidity': 0.70, 'AttackingThreat': 0.65
+        }
+
+        # Calculate advantages
+        advantages = calculate_manager_advantage(home_manager, away_manager)
+
+        manager_features.append({
+            'HomeManagerWinRate': home_stats['WinRate'],
+            'AwayManagerWinRate': away_stats['WinRate'],
+            'HomeManagerGoalsPerGame': home_stats['GoalsPerGame'],
+            'AwayManagerGoalsPerGame': away_stats['GoalsPerGame'],
+            'HomeManagerDefensiveSolidity': home_stats['DefensiveSolidity'],
+            'AwayManagerDefensiveSolidity': away_stats['DefensiveSolidity'],
+            'HomeManagerAttackingThreat': home_stats['AttackingThreat'],
+            'AwayManagerAttackingThreat': away_stats['AttackingThreat'],
+            'HomeManagerTacticalFlexibility': home_stats['TacticalFlexibility'],
+            'AwayManagerTacticalFlexibility': away_stats['TacticalFlexibility'],
+            'ManagerWinRateDiff': advantages['ManagerWinRateDiff'],
+            'ManagerGoalsPerGameDiff': advantages['ManagerGoalsPerGameDiff'],
+            'ManagerDefensiveAdvantage': advantages['ManagerDefensiveAdvantage'],
+            'ManagerAttackingAdvantage': advantages['ManagerAttackingAdvantage'],
+            'ManagerTacticalFlexibilityDiff': advantages['ManagerTacticalFlexibilityDiff']
+        })
+
+    manager_df = pd.DataFrame(manager_features)
+    df = pd.concat([df, manager_df], axis=1)
+
+    # Fill any missing values with league averages
+    manager_cols = manager_df.columns
+    for col in manager_cols:
+        if col in df.columns:
+            df[col] = df[col].fillna(df[col].mean())
+
+    print(f"Added manager features for {len(df)} matches")
+    return df
+
 # Calculate advanced metrics
 print("Calculating advanced team metrics...")
 historical_data_with_calculations = calculate_advanced_metrics(historical_data_with_calculations)
 
 # Calculate referee statistics
 historical_data_with_calculations = calculate_referee_statistics(historical_data_with_calculations)
+
+# Add manager features
+historical_data_with_calculations = add_manager_features(historical_data_with_calculations)
+
 historical_data_with_calculations.to_csv(
     path.join(DATA_DIR, 'combined_historical_data_with_calculations_new.csv'),
     sep='\t',

@@ -276,6 +276,79 @@ with tab3:
     st.dataframe(display_df, use_container_width=True, hide_index=True, height=get_dataframe_height(display_df))
 
 with tab4:
+    st.subheader("Manager Statistics")
+    st.write("Historical manager performance metrics calculated from Premier League matches (2021-2026)")
+    
+    # Extract manager statistics from historical data
+    manager_cols = ['HomeManager', 'HomeManagerWinRate', 'HomeManagerGoalsPerGame', 'HomeManagerDefensiveSolidity', 
+                   'HomeManagerAttackingThreat', 'HomeManagerTacticalFlexibility']
+    
+    # Get unique managers and their stats
+    manager_stats_df = df[manager_cols].drop_duplicates(subset=['HomeManager']).sort_values('HomeManagerWinRate', ascending=False)
+    
+    # Rename columns for better display
+    manager_stats_df.columns = ['Manager', 'Win Rate', 'Goals per Game', 'Defensive Solidity', 
+                               'Attacking Threat', 'Tactical Flexibility']
+    
+    # Format percentages
+    percentage_cols = ['Win Rate']
+    for col in percentage_cols:
+        if col in manager_stats_df.columns:
+            manager_stats_df[col] = (manager_stats_df[col] * 100).round(1)
+    
+    # Format decimal columns
+    decimal_cols = ['Goals per Game', 'Defensive Solidity', 'Attacking Threat', 'Tactical Flexibility']
+    for col in decimal_cols:
+        if col in manager_stats_df.columns:
+            manager_stats_df[col] = manager_stats_df[col].round(2)
+    
+    st.write(f"**Total Managers:** {len(manager_stats_df)}")
+    st.write("**Key Metrics:**")
+    st.write("- **Win Rate**: Historical winning percentage as manager")
+    st.write("- **Goals per Game**: Average goals scored per match under their management")
+    st.write("- **Defensive Solidity**: Rating of defensive organization (higher = better defense)")
+    st.write("- **Attacking Threat**: Rating of offensive capability (higher = more dangerous attack)")
+    st.write("- **Tactical Flexibility**: Rating of adaptability to different tactical situations")
+    
+    st.dataframe(manager_stats_df, use_container_width=True, hide_index=True, height=get_dataframe_height(manager_stats_df))
+    
+    # Add summary statistics
+    st.subheader("Manager Summary Statistics")
+    st.write("**League-wide averages across all managers:**")
+    
+    # Calculate averages for numeric columns
+    numeric_cols = ['Goals per Game', 'Defensive Solidity', 'Attacking Threat', 'Tactical Flexibility']
+    percentage_cols = ['Win Rate']
+    
+    # Create summary dataframe
+    summary_data = {}
+    
+    # Numeric columns - calculate mean
+    for col in numeric_cols:
+        if col in manager_stats_df.columns:
+            summary_data[col] = manager_stats_df[col].mean()
+    
+    # Percentage columns - calculate mean and format as percentage
+    for col in percentage_cols:
+        if col in manager_stats_df.columns:
+            raw_values = manager_stats_df[col] / 100  # Convert back from percentage
+            summary_data[col] = raw_values.mean()
+    
+    # Create summary dataframe
+    summary_df = pd.DataFrame([summary_data])
+    
+    # Format the display
+    summary_display = summary_df.copy()
+    for col in percentage_cols:
+        if col in summary_display.columns:
+            summary_display[col] = (summary_display[col] * 100).round(1)
+    
+    for col in ['Goals per Game', 'Defensive Solidity', 'Attacking Threat', 'Tactical Flexibility']:
+        if col in summary_display.columns:
+            summary_display[col] = summary_display[col].round(2)
+    
+    st.dataframe(summary_display, use_container_width=True, hide_index=True)
+    
     st.subheader("Referee Statistics")
     st.write("Historical referee performance metrics calculated from Premier League matches (2021-2026)")
     
@@ -355,6 +428,40 @@ with tab4:
                               'Avg Away Win %', 'Avg Draw %']
     
     st.dataframe(summary_display, use_container_width=True, hide_index=True)
+
+    # Manager Statistics Section
+    st.subheader("Manager Statistics")
+    st.write("Historical manager performance metrics and tactical preferences")
+
+    # Extract manager statistics from historical data
+    manager_cols = ['HomeManager', 'HomeManagerWinRate', 'HomeManagerGoalsPerGame', 'HomeManagerDefensiveSolidity',
+                   'HomeManagerAttackingThreat', 'HomeManagerTacticalFlexibility']
+    manager_stats_df = df[manager_cols].drop_duplicates(subset=['HomeManager']).dropna(subset=['HomeManager'])
+
+    # Rename columns for better display
+    manager_stats_df.columns = ['Manager', 'Win Rate', 'Goals/Game', 'Defensive Solidity',
+                               'Attacking Threat', 'Tactical Flexibility']
+
+    # Format percentages and decimals
+    percentage_cols = ['Win Rate', 'Defensive Solidity', 'Attacking Threat', 'Tactical Flexibility']
+    for col in percentage_cols:
+        if col in manager_stats_df.columns:
+            manager_stats_df[col] = (manager_stats_df[col] * 100).round(1)
+
+    decimal_cols = ['Goals/Game']
+    for col in decimal_cols:
+        if col in manager_stats_df.columns:
+            manager_stats_df[col] = manager_stats_df[col].round(2)
+
+    st.write(f"**Total Managers:** {len(manager_stats_df)}")
+    st.write("**Key Metrics:**")
+    st.write("- **Win Rate**: Historical winning percentage")
+    st.write("- **Goals/Game**: Average goals scored per match under this manager")
+    st.write("- **Defensive Solidity**: Rating of defensive organization (higher = better)")
+    st.write("- **Attacking Threat**: Rating of attacking potency (higher = better)")
+    st.write("- **Tactical Flexibility**: Ability to adapt formations and tactics")
+
+    st.dataframe(manager_stats_df, use_container_width=True, hide_index=True, height=get_dataframe_height(manager_stats_df))
 
 with tab5:
     st.subheader("Historical Data")
