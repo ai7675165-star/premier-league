@@ -201,52 +201,65 @@ def categorize_weather_impact(row):
 
 ---
 
-### 3. Referee Statistics
+### 3. Referee Statistics ✅ IMPLEMENTED
 **Priority:** Medium  
 **Impact:** Medium  
-**Data:** Scrape from Premier League website
+**Data Source:** Calculated from existing football-data.co.uk data
+**Status:** ✅ Completed - Referee disciplinary tendencies calculated from historical data
+**Implementation:** `calculate_referee_statistics()` in `prepare_model_data.py`
+**Features Added:** Yellow/red cards per game, fouls per game, home advantage bias, match outcome tendencies
+**Coverage:** All 39 referees with statistics from 2021-2026 seasons
+**Use Case:** Predict disciplinary outcomes for future matches based on referee history
 
 ```python
-# Create: fetch_referee_data.py
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
+# Implementation in prepare_model_data.py
 
-def scrape_referee_stats():
+def calculate_referee_statistics(df):
     """
-    Scrape referee statistics from Premier League website
-    Cards issued, penalties given, etc.
+    Calculate referee statistics from historical data
+    Creates features based on referee disciplinary tendencies
     """
     
-    url = 'https://www.premierleague.com/referees'
-    response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
+    # Calculate per-referee statistics
+    referee_stats = []
     
-    referee_data = []
+    for referee in df['Referee'].unique():
+        ref_matches = df[df['Referee'] == referee]
+        
+        # Disciplinary data
+        total_yellow_cards = (ref_matches['HomeYellowCards'] + ref_matches['AwayYellowCards']).sum()
+        total_red_cards = (ref_matches['HomeRedCards'] + ref_matches['AwayRedCards']).sum()
+        total_fouls = (ref_matches['HomeFouls'] + ref_matches['AwayFouls']).sum()
+        
+        # Per-game averages
+        yellow_cards_per_game = total_yellow_cards / len(ref_matches)
+        red_cards_per_game = total_red_cards / len(ref_matches)
+        fouls_per_game = total_fouls / len(ref_matches)
+        
+        # Home vs Away bias
+        home_advantage_yellow = (ref_matches['HomeYellowCards'].sum() - ref_matches['AwayYellowCards'].sum()) / len(ref_matches)
+        
+        # Match outcomes when officiating
+        home_win_rate = (ref_matches['FullTimeResult'] == 'H').sum() / len(ref_matches)
+        away_win_rate = (ref_matches['FullTimeResult'] == 'A').sum() / len(ref_matches)
+        draw_rate = (ref_matches['FullTimeResult'] == 'D').sum() / len(ref_matches)
+        
+        referee_stats.append({
+            'Referee': referee,
+            'RefYellowCardsPerGame': yellow_cards_per_game,
+            'RefRedCardsPerGame': red_cards_per_game,
+            'RefFoulsPerGame': fouls_per_game,
+            'RefHomeAdvantageYellow': home_advantage_yellow,
+            'RefHomeWinRate': home_win_rate,
+            'RefAwayWinRate': away_win_rate,
+            'RefDrawRate': draw_rate
+        })
     
-    # Parse referee table
-    # (Implementation depends on current website structure)
+    # Merge stats back to main dataframe
+    ref_stats_df = pd.DataFrame(referee_stats)
+    df = df.merge(ref_stats_df, on='Referee', how='left')
     
-    return pd.DataFrame(referee_data)
-
-# Referee features
-def create_referee_features(referee_name, referee_stats):
-    """Create features based on referee tendencies"""
-    ref_data = referee_stats[referee_stats['Referee'] == referee_name]
-    
-    if len(ref_data) == 0:
-        return {
-            'RefCardsPerGame': 3.5,  # League average
-            'RefPenaltiesPerGame': 0.3,
-            'RefHomeAdvantage': 0.0
-        }
-    
-    ref = ref_data.iloc[0]
-    return {
-        'RefCardsPerGame': ref['TotalCards'] / ref['Matches'],
-        'RefPenaltiesPerGame': ref['Penalties'] / ref['Matches'],
-        'RefHomeAdvantage': (ref['HomeWins'] - ref['AwayWins']) / ref['Matches']
-    }
+    return df
 ```
 
 ---
@@ -346,50 +359,26 @@ def extract_betting_features(df):
 
 ---
 
-### 6. Social Media Sentiment
-**Priority:** Low  
-**Impact:** Low-Medium  
-**Data:** Twitter API
+### 6. Referee Assignments for Upcoming Matches ✅ IMPLEMENTED
+**Priority:** Medium-High (now feasible!)  
+**Impact:** High (can enhance predictions with specific referee data)
+**Data Source:** Playmaker Stats website referee announcements
+**Status:** ✅ IMPLEMENTED - Successfully scraping from Playmaker Stats + **Statistics Tab Added**
+**Implementation:** `_scrape_playmaker_referees()` in `scrape_referees.py` + **New "Statistics" tab in Streamlit app**
+**Features Added:** Referee assignments for upcoming matches (Date, HomeTeam, AwayTeam, Referee) + **Interactive referee statistics dashboard** + **League-wide averages and summary statistics**
+**Coverage:** Latest matchweek referee assignments (10 matches for Matchweek 22) + **All 39 referees with historical stats** + **Summary statistics across all referees**
+**Data Source:** https://www.playmakerstats.com/news/ (Premier League referee announcements)
+**Integration:** Can be merged with upcoming fixtures for enhanced predictions + **Statistics tab displays all referee metrics**
 
-```python
-# Create: fetch_sentiment.py
-import tweepy
-from textblob import TextBlob
+**How it works:**
+- Scrapes Playmaker Stats news page to find latest referee announcement
+- Extracts structured table data with referee assignments
+- Normalizes team names to match historical data format
+- Returns DataFrame ready for merging with upcoming fixtures
+- **Statistics tab shows:** Total matches, yellow/red cards per game, disciplinary bias, win rates by venue
 
-def get_team_sentiment(team_name, days_before=3):
-    """
-    Analyze Twitter sentiment about a team
-    Requires Twitter API credentials
-    """
-    
-    # Twitter API setup
-    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-    auth.set_access_token(access_token, access_token_secret)
-    api = tweepy.API(auth)
-    
-    # Search tweets
-    tweets = api.search_tweets(
-        q=f'{team_name} premier league',
-        count=100,
-        lang='en',
-        result_type='recent'
-    )
-    
-    # Analyze sentiment
-    sentiments = []
-    for tweet in tweets:
-        analysis = TextBlob(tweet.text)
-        sentiments.append(analysis.sentiment.polarity)
-    
-    if sentiments:
-        return {
-            'AvgSentiment': sum(sentiments) / len(sentiments),
-            'PositiveTweets': sum(1 for s in sentiments if s > 0.1),
-            'NegativeTweets': sum(1 for s in sentiments if s < -0.1)
-        }
-    
-    return {'AvgSentiment': 0, 'PositiveTweets': 0, 'NegativeTweets': 0}
-```
+**Current Success:** Successfully scraped 10 referee assignments for Matchweek 22
+**Next Steps:** Integrate with `prepare_model_data.py` to enhance upcoming match predictions
 
 ---
 
@@ -516,3 +505,11 @@ def smart_imputation(df):
 **Data Source:** Open-Meteo Archive API (completely free, no API key required)  
 **Coverage:** All historical matches enhanced with weather data (with caching for efficiency)  
 **API Requirements:** None - completely free service
+
+### 5. Referee Statistics ✅ FULLY IMPLEMENTED
+**Completed:** January 2026  
+**Implementation:** `calculate_referee_statistics()` in `prepare_model_data.py`  
+**Features Added:** Yellow/red cards per game, fouls per game, home advantage bias, match outcome tendencies  
+**Data Source:** Calculated from existing football-data.co.uk disciplinary data  
+**Coverage:** All 39 referees with statistics from 2021-2026 seasons  
+**Use Case:** Predict disciplinary outcomes and match flow for future matches based on referee history

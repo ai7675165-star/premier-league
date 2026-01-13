@@ -21,7 +21,7 @@ A friendly app and data pipeline for predicting English Premier League match out
 
 ## What this project does (for fans)
 
-This project predicts the likely outcome of upcoming Premier League matches (home win, draw, or away win) using historical match data and machine learning. It also shows upcoming fixtures, kickoff times (in Eastern Time), and simple explanations of the model's predictions so fans can quickly understand which team is favored.
+This project predicts the likely outcome of upcoming Premier League matches (home win, draw, or away win) using historical match data and machine learning. It also shows upcoming fixtures, kickoff times (in Eastern Time), and simple explanations of the model's predictions so fans can quickly understand which team is favored. Additionally, it provides detailed referee statistics and performance metrics to help fans understand how different referees might influence match outcomes.
 
 [Back to top](#premier-league-predictor)
 
@@ -35,10 +35,12 @@ This project predicts the likely outcome of upcoming Premier League matches (hom
 	- Trains an XGBoost classifier to predict match outcomes
 	- Shows upcoming fixtures and predicted probabilities
 	- Displays kickoff times converted to Eastern Time (ET)
+	- **NEW: Statistics tab** with referee performance metrics and league-wide averages
 - An ESPN-based fixture fetcher (`fetch_upcoming_fixtures.py`) that pulls upcoming matches from ESPN's API and saves them to `data_files/upcoming_fixtures.csv`.
+- Referee data integration: Scrapes referee assignments from Playmaker Stats and calculates historical referee statistics (disciplinary tendencies, win rates, home advantage bias).
 - Several helper scripts and data files in `data_files/` such as `combined_historical_data_with_calculations.csv` and `all_teams.csv`.
 
-If you'd like a quick view, open the Streamlit app and check the "Show Upcoming Matches" and "Show Upcoming Predictions" sections.
+If you'd like a quick view, open the Streamlit app and check the "Show Upcoming Matches", "Show Upcoming Predictions", and "Statistics" sections.
 
 [Back to top](#premier-league-predictor)
 
@@ -93,8 +95,9 @@ streamlit run premier-league-predictions.py
 
 Notes for developers
 
-- The Streamlit UI has checkboxes for showing raw data, upcoming matches, predictive data, and predictions.
-- Models are trained in-memory when you open the 'Show Predictive Data' section; for production you may want to train offline and load a saved model.
+- The Streamlit UI has tabs for: Upcoming Matches, Predictive Data, Upcoming Predictions, Statistics, and Raw Data.
+- The Statistics tab displays referee performance metrics and league-wide averages.
+- Models are trained in-memory when you open the 'Predictive Data' section; for production you may want to train offline and load a saved model.
 - If you add third-party APIs (e.g., weather, injuries), add keys to a local `.env` and do not commit them.
 
 [Back to top](#premier-league-predictor)

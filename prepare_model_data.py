@@ -475,13 +475,86 @@ def calculate_advanced_metrics(df):
     
     return df
 
+def calculate_referee_statistics(df):
+    """
+    Calculate referee statistics from historical data
+    Creates features based on referee disciplinary tendencies
+    """
+    print("Calculating referee statistics...")
+
+    # Calculate per-referee statistics
+    referee_stats = []
+
+    for referee in df['Referee'].unique():
+        ref_matches = df[df['Referee'] == referee]
+
+        # Basic counts
+        total_matches = len(ref_matches)
+        total_yellow_cards = (ref_matches['HomeYellowCards'] + ref_matches['AwayYellowCards']).sum()
+        total_red_cards = (ref_matches['HomeRedCards'] + ref_matches['AwayRedCards']).sum()
+        total_fouls = (ref_matches['HomeFouls'] + ref_matches['AwayFouls']).sum()
+
+        # Per-game averages
+        yellow_cards_per_game = total_yellow_cards / total_matches
+        red_cards_per_game = total_red_cards / total_matches
+        fouls_per_game = total_fouls / total_matches
+
+        # Home vs Away bias
+        home_yellow_cards = ref_matches['HomeYellowCards'].sum()
+        away_yellow_cards = ref_matches['AwayYellowCards'].sum()
+        home_advantage_yellow = (home_yellow_cards - away_yellow_cards) / total_matches
+
+        # Match outcomes when officiating
+        home_wins = (ref_matches['FullTimeResult'] == 'H').sum()
+        away_wins = (ref_matches['FullTimeResult'] == 'A').sum()
+        draws = (ref_matches['FullTimeResult'] == 'D').sum()
+
+        home_win_rate = home_wins / total_matches
+        away_win_rate = away_wins / total_matches
+        draw_rate = draws / total_matches
+
+        referee_stats.append({
+            'Referee': referee,
+            'RefTotalMatches': total_matches,
+            'RefYellowCardsPerGame': yellow_cards_per_game,
+            'RefRedCardsPerGame': red_cards_per_game,
+            'RefFoulsPerGame': fouls_per_game,
+            'RefHomeAdvantageYellow': home_advantage_yellow,
+            'RefHomeWinRate': home_win_rate,
+            'RefAwayWinRate': away_win_rate,
+            'RefDrawRate': draw_rate
+        })
+
+    # Convert to DataFrame
+    ref_stats_df = pd.DataFrame(referee_stats)
+
+    # Merge referee stats back to main dataframe
+    df = df.merge(ref_stats_df, on='Referee', how='left')
+
+    # Fill any missing values with league averages
+    league_avg_yellow = df['RefYellowCardsPerGame'].mean()
+    league_avg_red = df['RefRedCardsPerGame'].mean()
+    league_avg_fouls = df['RefFoulsPerGame'].mean()
+
+    df['RefYellowCardsPerGame'] = df['RefYellowCardsPerGame'].fillna(league_avg_yellow)
+    df['RefRedCardsPerGame'] = df['RefRedCardsPerGame'].fillna(league_avg_red)
+    df['RefFoulsPerGame'] = df['RefFoulsPerGame'].fillna(league_avg_fouls)
+    df['RefHomeAdvantageYellow'] = df['RefHomeAdvantageYellow'].fillna(0.0)
+    df['RefHomeWinRate'] = df['RefHomeWinRate'].fillna(df['RefHomeWinRate'].mean())
+    df['RefAwayWinRate'] = df['RefAwayWinRate'].fillna(df['RefAwayWinRate'].mean())
+    df['RefDrawRate'] = df['RefDrawRate'].fillna(df['RefDrawRate'].mean())
+
+    print(f"Added referee statistics for {len(ref_stats_df)} referees")
+    return df
+
 # Calculate advanced metrics
 print("Calculating advanced team metrics...")
 historical_data_with_calculations = calculate_advanced_metrics(historical_data_with_calculations)
 
-# Save the result (all match-level fields are already present)
+# Calculate referee statistics
+historical_data_with_calculations = calculate_referee_statistics(historical_data_with_calculations)
 historical_data_with_calculations.to_csv(
-    path.join(DATA_DIR, 'combined_historical_data_with_calculations.csv'),
+    path.join(DATA_DIR, 'combined_historical_data_with_calculations_new.csv'),
     sep='\t',
     index=False
 )
