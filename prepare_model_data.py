@@ -4,6 +4,7 @@ import pandas as pd
 from os import path
 import os
 import numpy as np
+from scipy import stats
 from scrape_injuries_web import scrape_football_injury_news as scrape_premier_injuries, create_injury_features
 from fetch_weather_data import add_weather_features, add_weather_impact_category
 from manager_data import get_current_manager, get_manager_stats, calculate_manager_advantage
@@ -447,6 +448,43 @@ def calculate_advanced_metrics(df):
     df['GoalDiff_Home_Match'] = df['FullTimeHomeGoals'] - df['FullTimeAwayGoals']
     df['GoalDiff_Away_Match'] = df['FullTimeAwayGoals'] - df['FullTimeHomeGoals']
     
+    # Add Poisson-based goal probability features
+    # Calculate probabilities for different goal ranges using Poisson distribution
+    df['Home_Poisson_0_Goals'] = stats.poisson.pmf(0, df['xG_Home_Match'])
+    df['Home_Poisson_1_Goal'] = stats.poisson.pmf(1, df['xG_Home_Match'])
+    df['Home_Poisson_2_3_Goals'] = (stats.poisson.pmf(2, df['xG_Home_Match']) + 
+                                   stats.poisson.pmf(3, df['xG_Home_Match']))
+    df['Home_Poisson_4Plus_Goals'] = 1 - (df['Home_Poisson_0_Goals'] + df['Home_Poisson_1_Goal'] + 
+                                          df['Home_Poisson_2_3_Goals'])
+    
+    df['Away_Poisson_0_Goals'] = stats.poisson.pmf(0, df['xG_Away_Match'])
+    df['Away_Poisson_1_Goal'] = stats.poisson.pmf(1, df['xG_Away_Match'])
+    df['Away_Poisson_2_3_Goals'] = (stats.poisson.pmf(2, df['xG_Away_Match']) + 
+                                   stats.poisson.pmf(3, df['xG_Away_Match']))
+    df['Away_Poisson_4Plus_Goals'] = 1 - (df['Away_Poisson_0_Goals'] + df['Away_Poisson_1_Goal'] + 
+                                          df['Away_Poisson_2_3_Goals'])
+    
+    # Calculate Poisson-based expected points (simplified xPTS)
+    # Points = 3 * P(Home win) + 1 * P(Draw) + 0 * P(Away win)
+    # Using Poisson to estimate scoreline probabilities
+    home_win_prob = 0
+    draw_prob = 0
+    away_win_prob = 0
+    
+    for home_goals in range(5):  # Reasonable range for goals
+        for away_goals in range(5):
+            score_prob = (stats.poisson.pmf(home_goals, df['xG_Home_Match']) * 
+                         stats.poisson.pmf(away_goals, df['xG_Away_Match']))
+            if home_goals > away_goals:
+                home_win_prob += score_prob
+            elif home_goals == away_goals:
+                draw_prob += score_prob
+            else:
+                away_win_prob += score_prob
+    
+    df['Poisson_Home_xPTS'] = 3 * home_win_prob + 1 * draw_prob
+    df['Poisson_Away_xPTS'] = 3 * away_win_prob + 1 * draw_prob
+    
     # Now create rolling averages from PAST matches only (using shift to exclude current match)
     # Home team metrics
     df['HomexG_Avg_L5'] = df.groupby('HomeTeam')['xG_Home_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
@@ -460,9 +498,25 @@ def calculate_advanced_metrics(df):
     df['AwayMomentum_L3'] = df.groupby('AwayTeam')['FullTimeAwayGoals'].shift(1).rolling(3, min_periods=1).sum().reset_index(level=0, drop=True)
     df['AwayGoalDiff_Avg_L5'] = df.groupby('AwayTeam')['GoalDiff_Away_Match'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
     
+    # Poisson-based rolling averages
+    df['Home_Poisson_0_Goals_Avg_L5'] = df.groupby('HomeTeam')['Home_Poisson_0_Goals'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Home_Poisson_1_Goal_Avg_L5'] = df.groupby('HomeTeam')['Home_Poisson_1_Goal'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Home_Poisson_2_3_Goals_Avg_L5'] = df.groupby('HomeTeam')['Home_Poisson_2_3_Goals'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Home_Poisson_4Plus_Goals_Avg_L5'] = df.groupby('HomeTeam')['Home_Poisson_4Plus_Goals'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Home_Poisson_xPTS_Avg_L5'] = df.groupby('HomeTeam')['Poisson_Home_xPTS'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    
+    df['Away_Poisson_0_Goals_Avg_L5'] = df.groupby('AwayTeam')['Away_Poisson_0_Goals'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Away_Poisson_1_Goal_Avg_L5'] = df.groupby('AwayTeam')['Away_Poisson_1_Goal'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Away_Poisson_2_3_Goals_Avg_L5'] = df.groupby('AwayTeam')['Away_Poisson_2_3_Goals'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Away_Poisson_4Plus_Goals_Avg_L5'] = df.groupby('AwayTeam')['Away_Poisson_4Plus_Goals'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    df['Away_Poisson_xPTS_Avg_L5'] = df.groupby('AwayTeam')['Poisson_Away_xPTS'].shift(1).rolling(5, min_periods=1).mean().reset_index(level=0, drop=True)
+    
     # Drop intermediate match-level calculations
     df = df.drop(columns=['xG_Home_Match', 'xG_Away_Match', 'ShootingEff_Home_Match', 
-                          'ShootingEff_Away_Match', 'GoalDiff_Home_Match', 'GoalDiff_Away_Match'])
+                          'ShootingEff_Away_Match', 'GoalDiff_Home_Match', 'GoalDiff_Away_Match',
+                          'Home_Poisson_0_Goals', 'Home_Poisson_1_Goal', 'Home_Poisson_2_3_Goals', 'Home_Poisson_4Plus_Goals',
+                          'Away_Poisson_0_Goals', 'Away_Poisson_1_Goal', 'Away_Poisson_2_3_Goals', 'Away_Poisson_4Plus_Goals',
+                          'Poisson_Home_xPTS', 'Poisson_Away_xPTS'])
     
     # Fill NaN values for first matches with reasonable defaults
     df['HomexG_Avg_L5'] = df['HomexG_Avg_L5'].fillna(1.5)
@@ -474,6 +528,18 @@ def calculate_advanced_metrics(df):
     df['HomeGoalDiff_Avg_L5'] = df['HomeGoalDiff_Avg_L5'].fillna(0.0)
     df['AwayGoalDiff_Avg_L5'] = df['AwayGoalDiff_Avg_L5'].fillna(0.0)
     
+    # Fill NaN values for Poisson features with reasonable defaults
+    df['Home_Poisson_0_Goals_Avg_L5'] = df['Home_Poisson_0_Goals_Avg_L5'].fillna(0.3)  # ~30% chance of 0 goals
+    df['Home_Poisson_1_Goal_Avg_L5'] = df['Home_Poisson_1_Goal_Avg_L5'].fillna(0.35)  # ~35% chance of 1 goal
+    df['Home_Poisson_2_3_Goals_Avg_L5'] = df['Home_Poisson_2_3_Goals_Avg_L5'].fillna(0.25)  # ~25% chance of 2-3 goals
+    df['Home_Poisson_4Plus_Goals_Avg_L5'] = df['Home_Poisson_4Plus_Goals_Avg_L5'].fillna(0.1)  # ~10% chance of 4+ goals
+    df['Home_Poisson_xPTS_Avg_L5'] = df['Home_Poisson_xPTS_Avg_L5'].fillna(1.5)  # Average points
+    
+    df['Away_Poisson_0_Goals_Avg_L5'] = df['Away_Poisson_0_Goals_Avg_L5'].fillna(0.3)
+    df['Away_Poisson_1_Goal_Avg_L5'] = df['Away_Poisson_1_Goal_Avg_L5'].fillna(0.35)
+    df['Away_Poisson_2_3_Goals_Avg_L5'] = df['Away_Poisson_2_3_Goals_Avg_L5'].fillna(0.25)
+    df['Away_Poisson_4Plus_Goals_Avg_L5'] = df['Away_Poisson_4Plus_Goals_Avg_L5'].fillna(0.1)
+    df['Away_Poisson_xPTS_Avg_L5'] = df['Away_Poisson_xPTS_Avg_L5'].fillna(1.5)
     return df
 
 def calculate_referee_statistics(df):
