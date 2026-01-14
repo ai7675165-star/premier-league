@@ -1,0 +1,10 @@
+beautifulsoup4
+numpy
+pandas
+requests
+scikit-learn
+scipy
+xgboost
+openmeteo-requests
+requests-cache
+retry-requests
