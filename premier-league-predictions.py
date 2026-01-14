@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 from os import path
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, accuracy_score
 from sklearn.inspection import permutation_importance
+from scipy import stats
 from team_name_mapping import normalize_team_name
+from generate_pdf_report import generate_statistical_report, generate_quick_report
 
 DATA_DIR = 'data_files/'
 
@@ -44,7 +47,7 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
 
 def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats=5):
     """
-    Calculate permutation feature importance for the model.
+    Calculate permutation feature importance for the model with statistical significance testing.
     
     Args:
         model: Trained model
@@ -54,7 +57,7 @@ def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats
         n_repeats: Number of permutation repeats
     
     Returns:
-        pd.DataFrame: Feature importance results
+        pd.DataFrame: Feature importance results with statistical significance
     """
     result = permutation_importance(model, X_test, y_test, n_repeats=n_repeats, random_state=42, scoring='accuracy')
     
@@ -64,6 +67,27 @@ def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats
         'Importance %': result.importances_mean * 100,
         'Std': result.importances_std
     })
+    
+    # Add statistical significance testing
+    # Calculate z-scores and p-values for each feature
+    # Null hypothesis: feature importance = 0 (no importance)
+    importance_df['Z_Score'] = importance_df['Importance'] / (importance_df['Std'] + 1e-10)  # Add small epsilon to avoid division by zero
+    importance_df['P_Value'] = 2 * (1 - stats.norm.cdf(abs(importance_df['Z_Score'])))  # Two-tailed test
+    
+    # Add significance level categories
+    conditions = [
+        (importance_df['P_Value'] < 0.001),
+        (importance_df['P_Value'] < 0.01),
+        (importance_df['P_Value'] < 0.05),
+        (importance_df['P_Value'] < 0.10)
+    ]
+    choices = ['*** (p < 0.001)', '** (p < 0.01)', '* (p < 0.05)', '. (p < 0.10)']
+    importance_df['Significance'] = np.select(conditions, choices, default='Not Significant')
+    
+    # Add confidence intervals (95%)
+    confidence_level = 1.96  # 95% confidence
+    importance_df['CI_Lower'] = importance_df['Importance'] - confidence_level * importance_df['Std']
+    importance_df['CI_Upper'] = importance_df['Importance'] + confidence_level * importance_df['Std']
     
     importance_df = importance_df.sort_values('Importance', ascending=False)
     return importance_df
@@ -141,7 +165,7 @@ with tab1:
         st.subheader("Upcoming Premier League Matches")
         st.write(f"Found {len(upcoming_df)} upcoming matches")
         st.write("*Times shown in Eastern Time (ET)*")
-        st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), use_container_width=True, hide_index=True)
+        st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width='stretch', hide_index=True)
 
 with tab2:
     st.subheader("Model Performance")
@@ -154,7 +178,180 @@ with tab2:
     if st.button("Calculate Feature Importance", key="calc_importance"):
         with st.spinner("Calculating feature importance... This may take a moment."):
             importance_df = calculate_feature_importance(model, X_test, y_test, X_train.columns)
-        st.dataframe(importance_df, hide_index=True, height=get_dataframe_height(importance_df))
+            st.session_state['importance_df'] = importance_df
+    
+    # Display results if importance_df is available (either just calculated or from session state)
+    if 'importance_df' in st.session_state:
+        importance_df = st.session_state['importance_df']
+        
+        # Display statistical significance legend
+        st.info("""
+        **📊 Statistical Significance Legend:**
+        - *** (p < 0.001): Extremely significant
+        - ** (p < 0.01): Very significant  
+        - * (p < 0.05): Significant
+        - . (p < 0.10): Marginally significant
+        - Not Significant: No statistical significance
+        """)
+        
+        # Display top 20 features with enhanced formatting
+        st.subheader("Top 20 Features by Importance")
+        top_20 = importance_df.head(20).copy()
+        
+        # Format for display
+        display_df = top_20[['Feature', 'Importance %', 'Significance', 'Z_Score', 'P_Value']].copy()
+        display_df['Importance %'] = display_df['Importance %'].round(3)
+        display_df['Z_Score'] = display_df['Z_Score'].round(2)
+        display_df['P_Value'] = display_df['P_Value'].apply(lambda x: f"{x:.2e}" if x < 0.001 else f"{x:.4f}")
+        
+        # Color code based on significance
+        def color_significance(val):
+            if val == '*** (p < 0.001)':
+                return 'background-color: #d4edda; color: #155724'  # Green
+            elif val == '** (p < 0.01)':
+                return 'background-color: #d1ecf1; color: #0c5460'  # Blue
+            elif val == '* (p < 0.05)':
+                return 'background-color: #fff3cd; color: #856404'  # Yellow
+            elif val == '. (p < 0.10)':
+                return 'background-color: #f8d7da; color: #721c24'  # Red
+            else:
+                return ''
+        
+        styled_df = display_df.style.apply(lambda x: [color_significance(val) if col == 'Significance' else '' for col, val in x.items()], axis=1)
+        st.dataframe(styled_df, hide_index=True, height=get_dataframe_height(display_df))
+        
+        # Summary statistics
+        st.subheader("Statistical Summary")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            significant_count = len(importance_df[importance_df['P_Value'] < 0.05])
+            st.metric("Statistically Significant Features", f"{significant_count}/{len(importance_df)}", 
+                     f"{(significant_count/len(importance_df)*100):.1f}%")
+        
+        with col2:
+            highly_significant = len(importance_df[importance_df['P_Value'] < 0.01])
+            st.metric("Highly Significant (p < 0.01)", highly_significant)
+        
+        with col3:
+            top_importance = importance_df['Importance'].max()
+            st.metric("Max Importance Score", f"{top_importance:.4f}")
+        
+        # Feature categories analysis
+        st.subheader("Feature Category Analysis")
+        
+        # Define feature categories
+        categories = {
+            'Team Performance': ['Points', 'Goals', 'Shots', 'Differential', 'Momentum'],
+            'Betting Odds': ['Bet365', 'Pinnacle', 'William'],
+            'Manager': ['Manager', 'MGR'],
+            'Referee': ['Referee', 'Ref'],
+            'Weather': ['Weather', 'Temperature'],
+            'Poisson': ['Poisson'],
+            'Shooting': ['ShootingEff', 'xG']
+        }
+        
+        category_stats = []
+        for cat_name, keywords in categories.items():
+            mask = importance_df['Feature'].str.contains('|'.join(keywords), case=False)
+            if mask.any():
+                cat_importance = importance_df[mask]['Importance'].sum()
+                cat_count = mask.sum()
+                significant_in_cat = (importance_df[mask]['P_Value'] < 0.05).sum()
+                category_stats.append({
+                    'Category': cat_name,
+                    'Total Importance': cat_importance,
+                    'Feature Count': cat_count,
+                    'Significant Features': significant_in_cat,
+                    'Significance Rate': significant_in_cat / cat_count if cat_count > 0 else 0
+                })
+        
+        if category_stats:
+            cat_df = pd.DataFrame(category_stats)
+            cat_df = cat_df.sort_values('Total Importance', ascending=False)
+            cat_df['Significance Rate'] = (cat_df['Significance Rate'] * 100).round(1).astype(str) + '%'
+            st.dataframe(cat_df, hide_index=True)
+        
+        # PDF Export Section
+        st.markdown("---")
+        st.subheader("📄 Export Statistical Report")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📊 Generate Full PDF Report", key="full_pdf", help="Generate comprehensive PDF report with charts and detailed analysis"):
+                with st.spinner("Generating comprehensive PDF report..."):
+                    # Prepare data for PDF generation
+                    model_metrics = {
+                        'mae': mae,
+                        'accuracy': acc,
+                        'total_features': len(importance_df),
+                        'significant_features': len(importance_df[importance_df['P_Value'] < 0.05]),
+                        'significance_rate': len(importance_df[importance_df['P_Value'] < 0.05]) / len(importance_df) * 100,
+                        'top_category': cat_df.iloc[0]['Category'] if len(cat_df) > 0 else 'N/A',
+                        'top_reliability': float(cat_df.iloc[0]['Significance Rate'].rstrip('%')) if len(cat_df) > 0 else 0
+                    }
+                    
+                    # Convert category stats for PDF
+                    pdf_category_stats = []
+                    for _, row in cat_df.iterrows():
+                        pdf_category_stats.append({
+                            'Category': row['Category'],
+                            'Features': row['Feature Count'],
+                            'Significant': row['Significant Features'],
+                            'Reliability': float(row['Significance Rate'].rstrip('%'))
+                        })
+                    
+                    # Generate PDF
+                    pdf_path = generate_statistical_report(importance_df, model_metrics, pdf_category_stats)
+                    
+                    # Read PDF and create download button
+                    with open(pdf_path, "rb") as f:
+                        pdf_bytes = f.read()
+                    
+                    st.success("✅ Comprehensive PDF report generated!")
+                    st.download_button(
+                        label="📥 Download Full Report",
+                        data=pdf_bytes,
+                        file_name=pdf_path,
+                        mime="application/pdf",
+                        key="download_full_pdf"
+                    )
+                    
+                    # Clean up file
+                    os.remove(pdf_path)
+        
+        with col2:
+            if st.button("📋 Generate Quick Summary PDF", key="quick_pdf", help="Generate concise PDF summary for quick review"):
+                with st.spinner("Generating quick PDF summary..."):
+                    # Prepare data for quick PDF
+                    model_metrics = {
+                        'mae': mae,
+                        'accuracy': acc,
+                        'total_features': len(importance_df),
+                        'significant_features': len(importance_df[importance_df['P_Value'] < 0.05]),
+                        'significance_rate': len(importance_df[importance_df['P_Value'] < 0.05]) / len(importance_df) * 100
+                    }
+                    
+                    pdf_category_stats = []  # Not needed for quick report
+                    
+                    # Generate quick PDF
+                    pdf_bytes = generate_quick_report(importance_df, model_metrics, pdf_category_stats)
+                    
+                    timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"premier_league_quick_report_{timestamp}.pdf"
+                    
+                    st.success("✅ Quick PDF summary generated!")
+                    st.download_button(
+                        label="📥 Download Quick Summary",
+                        data=pdf_bytes,
+                        file_name=filename,
+                        mime="application/pdf",
+                        key="download_quick_pdf"
+                    )
+    
+    else:
+        st.info("Click 'Calculate Feature Importance' to analyze feature significance and enable PDF export.")
 
 with tab3:
     # Load upcoming fixtures
@@ -274,7 +471,7 @@ with tab3:
     st.write("*Times shown in Eastern Time (ET)*")
     if 'Referee' in upcoming_df.columns:
         st.write("✅ **Referee data integrated** - Predictions now include referee statistics from historical matches")
-    st.dataframe(display_df, use_container_width=True, hide_index=True, height=get_dataframe_height(display_df))
+    st.dataframe(display_df, width='stretch', hide_index=True, height=get_dataframe_height(display_df))
 
 with tab4:
     st.subheader("Manager Statistics")
@@ -311,7 +508,7 @@ with tab4:
     st.write("- **Attacking Threat**: Rating of offensive capability (higher = more dangerous attack)")
     st.write("- **Tactical Flexibility**: Rating of adaptability to different tactical situations")
     
-    st.dataframe(manager_stats_df, use_container_width=True, hide_index=True, height=get_dataframe_height(manager_stats_df))
+    st.dataframe(manager_stats_df, width='stretch', hide_index=True, height=get_dataframe_height(manager_stats_df))
     
     # Add summary statistics
     st.subheader("Manager Summary Statistics")
@@ -348,7 +545,7 @@ with tab4:
         if col in summary_display.columns:
             summary_display[col] = summary_display[col].round(2)
     
-    st.dataframe(summary_display, use_container_width=True, hide_index=True)
+    st.dataframe(summary_display, width='stretch', hide_index=True)
     
     st.subheader("Referee Statistics")
     st.write("Historical referee performance metrics calculated from Premier League matches (2021-2026)")
@@ -381,7 +578,7 @@ with tab4:
     st.write("- **Home Yellow Advantage**: Positive values indicate referees give more yellow cards to home teams")
     st.write("- **Win Rates**: Historical outcome percentages when referee officiates")
     
-    st.dataframe(referee_stats_df, use_container_width=True, hide_index=True, height=get_dataframe_height(referee_stats_df))
+    st.dataframe(referee_stats_df, width='stretch', hide_index=True, height=get_dataframe_height(referee_stats_df))
     
     # Add summary statistics
     st.subheader("Summary Statistics")
@@ -428,7 +625,7 @@ with tab4:
                               'Avg Fouls/Game', 'Avg Home Yellow Advantage', 'Avg Home Win %', 
                               'Avg Away Win %', 'Avg Draw %']
     
-    st.dataframe(summary_display, use_container_width=True, hide_index=True)
+    st.dataframe(summary_display, width='stretch', hide_index=True)
 
     st.subheader("Formation Statistics")
     st.write("Historical performance analysis by tactical formation (2021-2026)")
@@ -481,7 +678,7 @@ with tab4:
     st.write("- **Away Win Rate**: Percentage of matches won when using this formation away")
     st.write("- **Note**: Formations are associated with managers and may correlate with team quality")
     
-    st.dataframe(formation_df, use_container_width=True, hide_index=True, height=get_dataframe_height(formation_df))
+    st.dataframe(formation_df, width='stretch', hide_index=True, height=get_dataframe_height(formation_df))
     
     # Add formation summary
     st.subheader("Formation Summary")
@@ -497,10 +694,10 @@ with tab4:
     }
     
     summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    st.dataframe(summary_df, width='stretch', hide_index=True)
 
 with tab5:
     st.subheader("Historical Data")
     df_sorted = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
-    st.dataframe(df_sorted, height=get_dataframe_height(df_sorted), use_container_width=True, hide_index=True)
+    st.dataframe(df_sorted, height=get_dataframe_height(df_sorted), width='stretch', hide_index=True)
 

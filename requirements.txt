@@ -18,3 +18,5 @@ tweepy
 openmeteo-requests
 requests-cache
 retry-requests
+reportlab
+seaborn
