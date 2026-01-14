@@ -454,24 +454,268 @@ with tab3:
     upcoming_df['Draw_Prob'] = proba[:, 1]
     upcoming_df['AwayWin_Prob'] = proba[:, 2]
 
+    # Calculate risk scores for predictions (adapted from HenryOnilude methodology)
+    def calculate_prediction_risk(home_prob, draw_prob, away_prob):
+        """
+        Calculate prediction risk score (0-100) based on probability distribution.
+        Lower scores = higher confidence, higher scores = higher risk.
+        Adapted from HenryOnilude's variance-based risk scoring.
+        """
+        # Get the maximum probability (most likely outcome)
+        max_prob = max(home_prob, draw_prob, away_prob)
+
+        # Calculate entropy as a measure of uncertainty
+        # Higher entropy = more evenly distributed probabilities = higher risk
+        probs = np.array([home_prob, draw_prob, away_prob])
+        # Add small epsilon to avoid log(0)
+        probs = np.clip(probs, 1e-10, 1.0)
+        entropy = -np.sum(probs * np.log(probs))
+
+        # Normalize entropy to 0-1 scale (max entropy for 3 outcomes is log(3) ≈ 1.099)
+        normalized_entropy = entropy / np.log(3)
+
+        # Calculate confidence score (inverse of entropy)
+        confidence_score = 1 - normalized_entropy
+
+        # Calculate variance from uniform distribution as additional risk factor
+        uniform_prob = 1/3
+        variance = np.sum((probs - uniform_prob) ** 2) / 3
+
+        # Combine factors: lower confidence + higher variance = higher risk
+        risk_score = (1 - confidence_score) * 50 + variance * 50
+
+        # Scale to 0-100 range (no additional multiplication needed)
+        risk_score = min(100, max(0, risk_score))
+
+        return risk_score, confidence_score
+
+    # Apply risk scoring to all predictions
+    risk_scores = []
+    confidence_scores = []
+    for idx, row in upcoming_df.iterrows():
+        risk, confidence = calculate_prediction_risk(
+            row['HomeWin_Prob'],
+            row['Draw_Prob'],
+            row['AwayWin_Prob']
+        )
+        risk_scores.append(risk)
+        confidence_scores.append(confidence)
+
+    upcoming_df['Risk_Score'] = risk_scores
+    upcoming_df['Confidence_Score'] = confidence_scores
+
+    # Add risk categories adjusted for match prediction with limited data
+    # Based on actual distribution: most scores are 40-50, need broader low risk band
+    def get_risk_category(risk_score):
+        if risk_score > 47:
+            return "Critical Risk", "🚨"
+        elif risk_score > 40:
+            return "High Risk", "🔴"
+        elif risk_score > 30:
+            return "Moderate Risk", "🟡"
+        else:
+            return "Low Risk", "🟢"
+
+    risk_categories = []
+    risk_emojis = []
+    for risk in risk_scores:
+        category, emoji = get_risk_category(risk)
+        risk_categories.append(category)
+        risk_emojis.append(emoji)
+
+    upcoming_df['Risk_Category'] = risk_categories
+    upcoming_df['Risk_Emoji'] = risk_emojis
+
+    # Add betting recommendations based on risk
+    def get_betting_recommendation(home_prob, draw_prob, away_prob, risk_score):
+        max_prob = max(home_prob, draw_prob, away_prob)
+        confidence_threshold = 0.6  # 60% confidence minimum
+
+        if max_prob >= confidence_threshold and risk_score <= 30:
+            # High confidence, low risk - recommend betting
+            if home_prob == max_prob:
+                return "Bet Home Win", "💰"
+            elif draw_prob == max_prob:
+                return "Bet Draw", "💰"
+            else:
+                return "Bet Away Win", "💰"
+        elif max_prob >= 0.5 and risk_score <= 50:
+            # Moderate confidence - consider betting
+            if home_prob == max_prob:
+                return "Consider Home", "🤔"
+            elif draw_prob == max_prob:
+                return "Consider Draw", "🤔"
+            else:
+                return "Consider Away", "🤔"
+        else:
+            # Low confidence or high risk - avoid betting
+            return "Avoid Betting", "❌"
+
+    betting_recs = []
+    betting_emojis = []
+    for idx, row in upcoming_df.iterrows():
+        rec, emoji = get_betting_recommendation(
+            row['HomeWin_Prob'],
+            row['Draw_Prob'],
+            row['AwayWin_Prob'],
+            row['Risk_Score']
+        )
+        betting_recs.append(rec)
+        betting_emojis.append(emoji)
+
+    upcoming_df['Betting_Recommendation'] = betting_recs
+    upcoming_df['Bet_Emoji'] = betting_emojis
+
     # Prepare display dataframe with human-readable columns and percentages
-    display_cols = ['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob']
+    display_cols = ['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob',
+                   'Risk_Score', 'Risk_Category', 'Confidence_Score', 'Betting_Recommendation']
     if 'Referee' in upcoming_df.columns:
         display_cols.insert(4, 'Referee')
-    
+
     display_df = upcoming_df[display_cols].copy()
     display_df.columns = ['Match Date', 'Kickoff Time', 'Home Team', 'Away Team'] + \
                         (['Referee'] if 'Referee' in upcoming_df.columns else []) + \
-                        ['Home Win %', 'Draw %', 'Away Win %']
+                        ['Home Win %', 'Draw %', 'Away Win %', 'Risk Score', 'Risk Level', 'Confidence %', 'Betting Tip']
     display_df['Home Win %'] = (display_df['Home Win %'] * 100).round(1)
     display_df['Draw %'] = (display_df['Draw %'] * 100).round(1)
     display_df['Away Win %'] = (display_df['Away Win %'] * 100).round(1)
+    display_df['Confidence %'] = (display_df['Confidence %'] * 100).round(1)
+    display_df['Risk Score'] = display_df['Risk Score'].round(1)
 
-    st.subheader("Upcoming Match Predictions")
+    st.subheader("🎯 Upcoming Match Predictions with Risk Assessment")
     st.write("*Times shown in Eastern Time (ET)*")
     if 'Referee' in upcoming_df.columns:
         st.write("✅ **Referee data integrated** - Predictions now include referee statistics from historical matches")
-    st.dataframe(display_df, width='stretch', hide_index=True, height=get_dataframe_height(display_df))
+
+    # Risk level filter
+    st.subheader("🔍 Filter by Risk Level")
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    with col1:
+        show_all = st.button("📊 All Matches", use_container_width=True, type="secondary")
+
+    with col2:
+        show_low = st.button("🟢 Low Risk", use_container_width=True,
+                           help="Risk score ≤30: Relatively more confident predictions")
+
+    with col3:
+        show_moderate = st.button("🟡 Moderate Risk", use_container_width=True,
+                                help="Risk score 31-40: Moderate confidence predictions")
+
+    with col4:
+        show_high = st.button("🔴 High Risk", use_container_width=True,
+                            help="Risk score 41-47: Lower confidence predictions")
+
+    with col5:
+        show_critical = st.button("🚨 Critical Risk", use_container_width=True,
+                                help="Risk score >47: Very low confidence predictions")
+
+    # Determine which filter is active - only one can be true at a time
+    active_filters = [show_all, show_low, show_moderate, show_high, show_critical]
+    active_filter_count = sum(active_filters)
+
+    if active_filter_count == 0:
+        # Default to showing all
+        filtered_df = display_df.copy()
+        active_filter = "All Matches"
+    elif active_filter_count == 1:
+        # Only one filter is active
+        if show_all:
+            filtered_df = display_df.copy()
+            active_filter = "All Matches"
+        elif show_low:
+            filtered_df = display_df[display_df['Risk Score'] <= 30].copy()
+            active_filter = "Low Risk (≤30)"
+        elif show_moderate:
+            filtered_df = display_df[(display_df['Risk Score'] > 30) & (display_df['Risk Score'] <= 40)].copy()
+            active_filter = "Moderate Risk (31-40)"
+        elif show_high:
+            filtered_df = display_df[(display_df['Risk Score'] > 40) & (display_df['Risk Score'] <= 47)].copy()
+            active_filter = "High Risk (41-47)"
+        elif show_critical:
+            filtered_df = display_df[display_df['Risk Score'] > 47].copy()
+            active_filter = "Critical Risk (>47)"
+    else:
+        # Multiple filters clicked - show all as fallback
+        filtered_df = display_df.copy()
+        active_filter = "All Matches (multiple selections detected)"
+
+    # Debug: Show risk score distribution
+    with st.expander("🔍 Risk Score Debug (Click to expand)", expanded=False):
+        risk_counts = {
+            'Low (≤30)': len(display_df[display_df['Risk Score'] <= 30]),
+            'Moderate (31-40)': len(display_df[(display_df['Risk Score'] > 30) & (display_df['Risk Score'] <= 40)]),
+            'High (41-47)': len(display_df[(display_df['Risk Score'] > 40) & (display_df['Risk Score'] <= 47)]),
+            'Critical (>47)': len(display_df[display_df['Risk Score'] > 47])
+        }
+        st.write("**Risk Score Distribution:**")
+        for category, count in risk_counts.items():
+            st.write(f"- {category}: {count} matches")
+
+        st.write("**Sample Risk Scores:**")
+        sample_df = display_df.head(5)[['Home Team', 'Away Team', 'Risk Score', 'Home Win %', 'Draw %', 'Away Win %']]
+        st.dataframe(sample_df, hide_index=True)
+
+    # Risk scoring explanation
+    with st.expander("📊 Risk Scoring Methodology", expanded=False):
+        st.markdown("""
+        **Risk Assessment Framework** (Adapted from HenryOnilude's statistical variance analysis):
+
+        **Risk Score (0-100):**
+        - 🟢 **Low Risk (0-30)**: Relatively more confident predictions
+        - 🟡 **Moderate Risk (31-40)**: Moderate confidence predictions
+        - 🔴 **High Risk (41-47)**: Lower confidence predictions
+        - 🚨 **Critical Risk (>47)**: Very low confidence predictions (limited data available)
+
+        **Confidence Score:** Measures prediction certainty (inverse of entropy)
+        **Betting Recommendations:** Risk-adjusted suggestions based on confidence and risk levels
+        """)
+
+    # Summary statistics (based on filtered data)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if len(filtered_df) > 0:
+            low_risk_pct = (filtered_df['Risk Score'] <= 13).sum() / len(filtered_df) * 100
+            st.metric("Low Risk in Filter", f"{(filtered_df['Risk Score'] <= 13).sum()}/{len(filtered_df)}", f"{low_risk_pct:.1f}%")
+        else:
+            st.metric("Low Risk in Filter", "0/0", "0.0%")
+    with col2:
+        if len(filtered_df) > 0:
+            high_conf_pct = (filtered_df['Confidence %'] >= 60).sum() / len(filtered_df) * 100
+            st.metric("High Confidence in Filter", f"{(filtered_df['Confidence %'] >= 60).sum()}/{len(filtered_df)}", f"{high_conf_pct:.1f}%")
+        else:
+            st.metric("High Confidence in Filter", "0/0", "0.0%")
+    with col3:
+        if len(filtered_df) > 0:
+            bettable_pct = filtered_df['Betting Tip'].str.contains('Bet|Consider').sum() / len(filtered_df) * 100
+            st.metric("Recommended Bets in Filter", f"{filtered_df['Betting Tip'].str.contains('Bet|Consider').sum()}/{len(filtered_df)}", f"{bettable_pct:.1f}%")
+        else:
+            st.metric("Recommended Bets in Filter", "0/0", "0.0%")
+    with col4:
+        if len(filtered_df) > 0:
+            avg_risk = filtered_df['Risk Score'].mean()
+            st.metric("Average Risk in Filter", f"{avg_risk:.1f}/100")
+        else:
+            st.metric("Average Risk in Filter", "N/A")
+
+    # Add color styling to the dataframe based on risk levels
+    def color_risk_rows(row):
+        risk_score = row['Risk Score']
+        if risk_score <= 30:
+            return ['background-color: #d4edda; color: #155724'] * len(row)  # Green for low risk
+        elif risk_score <= 40:
+            return ['background-color: #fff3cd; color: #856404'] * len(row)  # Yellow for moderate risk
+        elif risk_score <= 47:
+            return ['background-color: #f8d7da; color: #721c24'] * len(row)  # Red for high risk
+        else:
+            return ['background-color: #f5c6cb; color: #721c24'] * len(row)  # Dark red for critical risk
+
+    # Apply styling and display filtered dataframe
+    if len(filtered_df) > 0:
+        styled_df = filtered_df.style.apply(color_risk_rows, axis=1)
+        st.dataframe(styled_df, width='stretch', hide_index=True, height=get_dataframe_height(filtered_df))
+    else:
+        st.info("No matches found for the selected risk level. Try selecting 'All Matches' or a different risk category.")
 
 with tab4:
     st.subheader("Manager Statistics")

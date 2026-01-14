@@ -102,6 +102,17 @@ p_value = stats.norm.sf(abs(z_score)) * 2
 
 ## Recommended Incorporations
 
+### ✅ Completed Features
+
+#### 5. Risk Scoring Framework
+**Status**: ✅ **COMPLETED** - Implemented entropy-based risk scoring for prediction confidence
+**Rationale**: Added a "confidence" dimension to our predictions for better betting decisions
+**Implementation**:
+- ✅ Adapted entropy-based risk scoring for prediction confidence (0-100 scale)
+- ✅ Added uncertainty quantification using entropy and variance calculations
+- ✅ Created risk-adjusted betting recommendations with 4-tier categorization
+- ✅ Integrated risk filtering and visualization in Streamlit dashboard
+
 ### High Priority (Direct Value)
 
 #### 1. Enhanced xG Features with Poisson
@@ -136,12 +147,7 @@ p_value = stats.norm.sf(abs(z_score)) * 2
 
 ### Low Priority (Nice-to-Have)
 
-#### 5. Risk Scoring Framework
-**Rationale**: Could add a "confidence" dimension to our predictions
-**Implementation**:
-- Adapt their risk scoring for prediction confidence
-- Add uncertainty quantification to match predictions
-- Create risk-adjusted betting recommendations
+<!-- Risk Scoring Framework moved to Completed Features -->
 
 ## Implementation Plan
 
@@ -168,10 +174,10 @@ p_value = stats.norm.sf(abs(z_score)) * 2
    - Create automated model reports
 
 ### Phase 3: Advanced Features (3-4 weeks)
-5. **Risk Quantification**
-   - Adapt risk scoring for prediction confidence
-   - Add uncertainty measures to predictions
-   - Create risk-adjusted recommendations
+5. **Risk Quantification** ✅ **COMPLETED**
+   - ✅ Adapt risk scoring for prediction confidence
+   - ✅ Add uncertainty measures to predictions
+   - ✅ Create risk-adjusted recommendations
 
 ## Potential Challenges
 
@@ -194,7 +200,7 @@ p_value = stats.norm.sf(abs(z_score)) * 2
 
 The HenryOnilude repository offers **valuable statistical techniques** that could enhance our Premier League predictor, particularly in xG modeling and statistical validation. However, the core methodologies serve different analytical purposes, so we should focus on **selective integration** rather than wholesale adoption.
 
-**Recommended Approach**: Start with Poisson-enhanced xG features and statistical significance testing, then move to infrastructure improvements like automated updates and PDF reporting. This would add sophistication to our model while maintaining our focus on match outcome prediction.
+**Recommended Approach**: We have successfully implemented the risk scoring framework for prediction confidence. Continue with Poisson-enhanced xG features and statistical significance testing, then move to infrastructure improvements like automated updates and PDF reporting. This would add further sophistication to our model while maintaining our focus on match outcome prediction.
 
 The repository demonstrates excellent engineering practices and could serve as a reference for our own infrastructure improvements, particularly in automation and reporting capabilities.</content>
 <parameter name="filePath">c:\Users\gmalb\Downloads\premier-league\henry_onilude_repository_analysis.md
