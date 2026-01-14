@@ -1,4 +1,5 @@
 name: Daily Data Update
+# Updated Python version to 3.10 for Streamlit compatibility
 on:
   schedule:
     - cron: '0 7 * * *'  # 2 AM ET (7 AM UTC) daily
