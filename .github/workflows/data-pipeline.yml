@@ -1,4 +1,4 @@
-name: Daily Data Update
+name: Premier League Data Pipeline
 # Updated Python version to 3.10 for Streamlit compatibility
 on:
   schedule:
