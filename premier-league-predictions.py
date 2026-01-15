@@ -786,6 +786,82 @@ with tab3:
         st.info("No matches found for the selected risk level. Try selecting 'All Matches' or a different risk category.")
 
 with tab4:
+    st.subheader("📊 Team Form Guide")
+    st.write("Recent performance analysis for all Premier League teams (last 5 matches)")
+    
+    from analyze_team_form import get_team_form_stats
+    
+    teams = sorted(df['HomeTeam'].unique())
+    
+    form_data = []
+    for team in teams:
+        stats = get_team_form_stats(team, num_matches=5)
+        form_data.append({
+            'Team': team,
+            'Last 5': stats['form_string'],
+            'Wins': stats['wins'],
+            'Draws': stats['draws'],
+            'Losses': stats['losses'],
+            'Points': stats['points'],
+            'Form Score': stats['wins'] * 3 + stats['draws']  # Points-based scoring
+        })
+    
+    form_df = pd.DataFrame(form_data).sort_values('Form Score', ascending=False)
+    
+    # Format the display
+    form_display = form_df.copy()
+    form_display['Form Score'] = form_display['Form Score'].astype(int)
+    
+    st.write(f"**Total Teams Analyzed:** {len(form_df)}")
+    st.write("**Key Metrics:**")
+    st.write("- **Last 5**: Recent match results (W=Win, D=Draw, L=Loss)")
+    st.write("- **Points**: Total points from last 5 matches (3 per win, 1 per draw)")
+    st.write("- **Form Score**: Points-based ranking (higher = better form)")
+    
+    # Add color coding for form strings
+    def color_form_results(form_string):
+        if not form_string:
+            return ''
+        colored = []
+        for result in form_string:
+            if result == 'W':
+                colored.append('🟢')  # Green for wins
+            elif result == 'D':
+                colored.append('🟡')  # Yellow for draws
+            else:
+                colored.append('🔴')  # Red for losses
+        return ' '.join(colored)
+    
+    # Create a display version with colored form
+    display_df = form_display.copy()
+    display_df['Form Visual'] = display_df['Last 5'].apply(color_form_results)
+    display_df = display_df[['Team', 'Form Visual', 'Last 5', 'Wins', 'Draws', 'Losses', 'Points', 'Form Score']]
+    display_df.columns = ['Team', 'Form Visual', 'Results', 'Wins', 'Draws', 'Losses', 'Points', 'Form Score']
+    
+    st.dataframe(display_df, width='stretch', hide_index=True, height=get_dataframe_height(display_df))
+    
+    # Add form summary
+    st.subheader("Form Summary")
+    st.write("**League-wide form analysis:**")
+    
+    # Calculate summary statistics
+    total_matches = form_df['Wins'].sum() + form_df['Draws'].sum() + form_df['Losses'].sum()
+    avg_points = form_df['Points'].mean()
+    best_form_team = form_df.loc[form_df['Form Score'].idxmax(), 'Team']
+    best_form_score = form_df['Form Score'].max()
+    
+    summary_stats = {
+        'Total Matches Analyzed': total_matches,
+        'Average Points per Team': f"{avg_points:.1f}",
+        'Best Form Team': f"{best_form_team} ({best_form_score} points)",
+        'Teams with Perfect Form': len(form_df[form_df['Losses'] == 0]),
+        'Teams Winless': len(form_df[form_df['Wins'] == 0])
+    }
+    
+    summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
+    st.dataframe(summary_df, width='stretch', hide_index=True)
+
+    st.markdown("---")
     st.subheader("Manager Statistics")
     st.write("Historical manager performance metrics calculated from Premier League matches (2021-2026)")
     
