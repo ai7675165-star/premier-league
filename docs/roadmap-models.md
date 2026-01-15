@@ -17,6 +17,11 @@
 
 Combine multiple models for more robust predictions. Implemented as VotingClassifier with XGBoost, Random Forest, Gradient Boosting, and Logistic Regression using soft voting with weighted probabilities.
 
+**Features:**
+- Pre-trained nightly via automated pipeline
+- Session state persistence for immediate availability
+- Simple ensemble for fast loading vs full ensemble for accuracy
+
 ```python
 # Create: models/ensemble_predictor.py
 from xgboost import XGBClassifier
@@ -80,94 +85,19 @@ model.fit(X_train, y_train)
 **Expected Improvement:** +3-7% accuracy  
 **Actual Improvement:** +4.9% accuracy vs XGBoost baseline
 
-Deep learning approach using PyTorch with 3-layer neural network (128→64→32 neurons), batch normalization, and dropout regularization. Successfully implemented and integrated into the model comparison framework.
+Deep learning approach using PyTorch with 3-layer neural network (128→64→32 neurons), batch normalization, and dropout regularization. Successfully implemented and integrated into the model comparison framework with UI button activation.
 
-```python
-# Create: models/neural_predictor.py
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from sklearn.preprocessing import StandardScaler
-import numpy as np
+**Features:**
+- Pre-trained nightly via automated pipeline
+- Session state persistence of trained models
+- 50 epochs with batch normalization and dropout
+- On-demand retraining available via UI button
+- Automatic integration with model comparison dashboard
 
-class FootballNet(nn.Module):
-    def __init__(self, input_size, hidden_sizes=[128, 64, 32]):
-        super(FootballNet, self).__init__()
-        
-        layers = []
-        prev_size = input_size
-        
-        for hidden_size in hidden_sizes:
-            layers.extend([
-                nn.Linear(prev_size, hidden_size),
-                nn.ReLU(),
-                nn.BatchNorm1d(hidden_size),
-                nn.Dropout(0.3)
-            ])
-            prev_size = hidden_size
-        
-        layers.append(nn.Linear(prev_size, 3))  # 3 output classes
-        layers.append(nn.Softmax(dim=1))
-        
-        self.network = nn.Sequential(*layers)
-    
-    def forward(self, x):
-        return self.network(x)
-
-def train_neural_model(X_train, y_train, epochs=100, batch_size=32):
-    """Train neural network model"""
-    
-    # Normalize features
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_train)
-    
-    # Convert to tensors
-    X_tensor = torch.FloatTensor(X_scaled)
-    y_tensor = torch.LongTensor(y_train.values)
-    
-    # Create model
-    model = FootballNet(input_size=X_scaled.shape[1])
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    
-    # Training loop
-    for epoch in range(epochs):
-        model.train()
-        
-        # Mini-batch training
-        for i in range(0, len(X_tensor), batch_size):
-            batch_X = X_tensor[i:i+batch_size]
-            batch_y = y_tensor[i:i+batch_size]
-            
-            # Forward pass
-            outputs = model(batch_X)
-            loss = criterion(outputs, batch_y)
-            
-            # Backward pass
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-        
-        if (epoch + 1) % 10 == 0:
-            print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}')
-    
-    return model, scaler
-
-# Prediction function
-def predict_neural(model, scaler, X_new):
-    """Make predictions with neural network"""
-    model.eval()
-    with torch.no_grad():
-        X_scaled = scaler.transform(X_new)
-        X_tensor = torch.FloatTensor(X_scaled)
-        predictions = model(X_tensor)
-        return predictions.numpy()
-```
-
-**Requirements:**
-```bash
-pip install torch torchvision
-```
+**Architecture:**
+- Input layer → 128 neurons → 64 neurons → 32 neurons → 3 outputs
+- ReLU activation, batch normalization, 30% dropout
+- Cross-entropy loss with Adam optimizer
 
 ---
 
@@ -348,54 +278,30 @@ def prepare_sequence_data(df, sequence_length=5):
 
 ---
 
-### 5. Hyperparameter Optimization
+### 5. Hyperparameter Optimization ✅ **COMPLETED**
 **Priority:** High  
 **Complexity:** Low  
-**Expected Improvement:** +2-5% accuracy
+**Expected Improvement:** +2-5% accuracy  
+**Actual Improvement:** +0.87% accuracy, -0.023 MAE
 
-```python
-# Create: optimize_model.py
-from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from xgboost import XGBClassifier
-import numpy as np
+Implemented RandomizedSearchCV for XGBoost hyperparameter optimization with UI button integration. Users can now trigger expensive hyperparameter optimization on-demand rather than on every app startup, improving performance while maintaining access to advanced features.
 
-def optimize_xgboost(X_train, y_train):
-    """Find best hyperparameters for XGBoost"""
-    
-    param_grid = {
-        'n_estimators': [100, 200, 300, 500],
-        'max_depth': [3, 5, 7, 9],
-        'learning_rate': [0.01, 0.05, 0.1, 0.2],
-        'subsample': [0.6, 0.8, 1.0],
-        'colsample_bytree': [0.6, 0.8, 1.0],
-        'min_child_weight': [1, 3, 5],
-        'gamma': [0, 0.1, 0.2]
-    }
-    
-    xgb = XGBClassifier(random_state=42)
-    
-    # Randomized search (faster than grid search)
-    random_search = RandomizedSearchCV(
-        xgb,
-        param_distributions=param_grid,
-        n_iter=50,
-        scoring='accuracy',
-        cv=5,
-        verbose=1,
-        n_jobs=-1,
-        random_state=42
-    )
-    
-    random_search.fit(X_train, y_train)
-    
-    print(f"Best parameters: {random_search.best_params_}")
-    print(f"Best CV score: {random_search.best_score_:.3f}")
-    
-    return random_search.best_estimator_
+**Features:**
+- Pre-trained nightly via automated pipeline
+- On-demand re-optimization available via UI button
+- Session state persistence of optimization results
+- Reduced search space (10 iterations × 3-fold CV) for reasonable runtime
+- Real-time progress indicators and status updates
+- Integration with model comparison dashboard
 
-# Usage
-best_model = optimize_xgboost(X_train, y_train)
-```
+**Best Parameters Found:**
+- `subsample`: 0.8
+- `n_estimators`: 100  
+- `min_child_weight`: 5
+- `max_depth`: 3
+- `learning_rate`: 0.1
+- `gamma`: 0
+- `colsample_bytree`: 0.8
 
 ---
 
@@ -446,7 +352,7 @@ def compare_all_models(X_train, X_test, y_train, y_test):
 ## Recommended Next Steps
 
 1. ✅ **COMPLETED:** Implement ensemble model (+3.5% accuracy improvement)
-2. ✅ **COMPLETED:** Experiment with neural networks (+4.9% accuracy vs XGBoost baseline)
-3. **Immediate:** Optimize current XGBoost hyperparameters for further gains
+2. ✅ **COMPLETED:** Experiment with neural networks (+4.9% accuracy vs XGBoost baseline) - Now with UI button activation
+3. ✅ **COMPLETED:** Optimize current XGBoost hyperparameters (+0.87% accuracy improvement) - Now with UI button activation
 4. **Week 1:** Add Poisson regression for goal predictions
 5. **Month 1:** Build comprehensive model comparison dashboard

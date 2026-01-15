@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import pickle
 from os import path
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
@@ -12,6 +13,7 @@ from team_name_mapping import normalize_team_name
 from generate_pdf_report import generate_statistical_report, generate_quick_report
 from models.ensemble_predictor import create_ensemble_model, create_simple_ensemble
 from models.neural_predictor import train_neural_model, predict_neural
+from optimize_model import optimize_xgboost
 
 DATA_DIR = 'data_files/'
 
@@ -19,6 +21,9 @@ st.set_page_config(page_title="Pitch Oracle - Premier League Historical Data", l
 
 st.image(path.join(DATA_DIR, 'logo.png'), width=250)
 st.title("Premier League Predictor")
+
+# Performance note
+# st.info("🚀 **Performance Mode:** Models are pre-trained nightly. Advanced features like hyperparameter optimization and neural networks are available on-demand via buttons below.")
 
 csv_path = path.join(DATA_DIR, 'combined_historical_data_with_calculations_new.csv')
 
@@ -46,6 +51,78 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
     if max_height is not None:
         return min(calculated_height, max_height)
     return calculated_height
+
+def load_pretrained_models():
+    """
+    Load pre-trained models from the nightly pipeline.
+    Falls back to training if models don't exist.
+    """
+    models_dir = 'models/'
+    performance = {}
+
+    try:
+        # Load XGBoost baseline
+        xgb_path = path.join(models_dir, 'xgb_baseline.pkl')
+        if path.exists(xgb_path):
+            with open(xgb_path, 'rb') as f:
+                xgb_model = pickle.load(f)
+            print("✅ Loaded pre-trained XGBoost baseline")
+        else:
+            raise FileNotFoundError("XGBoost model not found")
+
+        # Load Ensemble model
+        ensemble_path = path.join(models_dir, 'ensemble_model.pkl')
+        if path.exists(ensemble_path):
+            with open(ensemble_path, 'rb') as f:
+                ensemble_model = pickle.load(f)
+            print("✅ Loaded pre-trained Ensemble model")
+        else:
+            raise FileNotFoundError("Ensemble model not found")
+
+        # Load Neural Network (if available)
+        neural_model = None
+        neural_scaler = None
+        neural_path = path.join(models_dir, 'neural_model.pkl')
+        scaler_path = path.join(models_dir, 'neural_scaler.pkl')
+        if path.exists(neural_path) and path.exists(scaler_path):
+            with open(neural_path, 'rb') as f:
+                neural_model = pickle.load(f)
+            with open(scaler_path, 'rb') as f:
+                neural_scaler = pickle.load(f)
+            print("✅ Loaded pre-trained Neural Network")
+        else:
+            print("⚠️  Neural Network not available, will train on-demand")
+
+        # Load Optimized XGBoost (if available)
+        optimized_xgb_model = None
+        opt_xgb_path = path.join(models_dir, 'optimized_xgb.pkl')
+        if path.exists(opt_xgb_path):
+            with open(opt_xgb_path, 'rb') as f:
+                optimized_xgb_model = pickle.load(f)
+            print("✅ Loaded pre-trained Optimized XGBoost")
+        else:
+            print("⚠️  Optimized XGBoost not available, will optimize on-demand")
+
+        # Load performance metrics
+        perf_path = path.join(models_dir, 'model_performance.pkl')
+        if path.exists(perf_path):
+            with open(perf_path, 'rb') as f:
+                performance = pickle.load(f)
+            print("✅ Loaded model performance metrics")
+
+        return {
+            'xgb_model': xgb_model,
+            'ensemble_model': ensemble_model,
+            'neural_model': neural_model,
+            'neural_scaler': neural_scaler,
+            'optimized_xgb_model': optimized_xgb_model,
+            'performance': performance
+        }
+
+    except Exception as e:
+        print(f"⚠️  Could not load pre-trained models: {e}")
+        print("Falling back to on-demand training...")
+        return None
 
 def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats=5):
     """
@@ -143,36 +220,77 @@ if bad_cols:
 # --- Train/Test Split ---
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-# --- Model Comparison: XGBoost vs Ensemble ---
+# --- Load Pre-trained Models or Train Fresh ---
+print("Loading pre-trained models...")
+pretrained_models = load_pretrained_models()
 
-# Train XGBoost model (baseline)
-xgb_model = XGBClassifier(eval_metric='mlogloss', random_state=42)
-xgb_model.fit(X_train, y_train)
-xgb_pred = xgb_model.predict(X_test)
-xgb_mae = mean_absolute_error(y_test, xgb_pred)
-xgb_acc = accuracy_score(y_test, xgb_pred)
+if pretrained_models:
+    # Use pre-trained models
+    xgb_model = pretrained_models['xgb_model']
+    ensemble_model = pretrained_models['ensemble_model']
+    neural_model = pretrained_models['neural_model']
+    neural_scaler = pretrained_models['neural_scaler']
+    optimized_xgb_model = pretrained_models['optimized_xgb_model']
+    performance = pretrained_models['performance']
 
-# Train Ensemble model
-ensemble_model = create_simple_ensemble()  # Use simple ensemble for faster training
-ensemble_model.fit(X_train, y_train)
-ensemble_pred = ensemble_model.predict(X_test)
-ensemble_mae = mean_absolute_error(y_test, ensemble_pred)
-ensemble_acc = accuracy_score(y_test, ensemble_pred)
+    # Get performance metrics
+    xgb_acc = performance.get('xgb_baseline', {}).get('accuracy', 0)
+    xgb_mae = performance.get('xgb_baseline', {}).get('mae', 0)
+    ensemble_acc = performance.get('ensemble', {}).get('accuracy', 0)
+    ensemble_mae = performance.get('ensemble', {}).get('mae', 0)
+    neural_acc = performance.get('neural', {}).get('accuracy', 0) if neural_model else 0
+    neural_mae = performance.get('neural', {}).get('mae', 0) if neural_model else 0
+    opt_xgb_acc = performance.get('optimized_xgb', {}).get('accuracy', 0) if optimized_xgb_model else 0
+    opt_xgb_mae = performance.get('optimized_xgb', {}).get('mae', 0) if optimized_xgb_model else 0
 
-# Train Neural Network model (optional - takes longer to train)
-try:
-    print("Training Neural Network model... (this may take a moment)")
-    neural_model, neural_scaler = train_neural_model(X_train, y_train, epochs=50, batch_size=32)  # Reduced epochs for speed
-    neural_pred_proba = predict_neural(neural_model, neural_scaler, X_test)
-    neural_pred = np.argmax(neural_pred_proba, axis=1)
-    neural_mae = mean_absolute_error(y_test, neural_pred)
-    neural_acc = accuracy_score(y_test, neural_pred)
-    neural_available = True
-    print(f"Neural Network trained - MAE: {neural_mae:.3f}, Accuracy: {neural_acc:.3f}")
-except Exception as e:
-    print(f"Neural Network training failed: {e}")
-    neural_available = False
-    neural_mae = neural_acc = 0
+    # Generate predictions for feature importance (using test set)
+    xgb_pred = xgb_model.predict(X_test)
+    ensemble_pred = ensemble_model.predict(X_test)
+
+    print("✅ Successfully loaded pre-trained models!")
+
+else:
+    # Fallback: Train models fresh (original behavior)
+    print("Training models from scratch...")
+
+    # Train XGBoost model (baseline)
+    xgb_model = XGBClassifier(eval_metric='mlogloss', random_state=42)
+    xgb_model.fit(X_train, y_train)
+    xgb_pred = xgb_model.predict(X_test)
+    xgb_mae = mean_absolute_error(y_test, xgb_pred)
+    xgb_acc = accuracy_score(y_test, xgb_pred)
+
+    # Train Ensemble model
+    ensemble_model = create_simple_ensemble()
+    ensemble_model.fit(X_train, y_train)
+    ensemble_pred = ensemble_model.predict(X_test)
+    ensemble_mae = mean_absolute_error(y_test, ensemble_pred)
+    ensemble_acc = accuracy_score(y_test, ensemble_pred)
+
+    # Initialize variables for optional models
+    neural_model = None
+    neural_scaler = None
+    optimized_xgb_model = None
+    neural_acc = neural_mae = opt_xgb_acc = opt_xgb_mae = 0
+
+# Initialize session state for expensive model results
+if 'optimized_available' not in st.session_state:
+    st.session_state.optimized_available = optimized_xgb_model is not None
+    st.session_state.opt_xgb_mae = opt_xgb_mae
+    st.session_state.opt_xgb_acc = opt_xgb_acc
+
+if 'neural_available' not in st.session_state:
+    st.session_state.neural_available = neural_model is not None
+    st.session_state.neural_mae = neural_mae
+    st.session_state.neural_acc = neural_acc
+
+# Use session state values
+optimized_available = st.session_state.optimized_available
+opt_xgb_mae = st.session_state.opt_xgb_mae
+opt_xgb_acc = st.session_state.opt_xgb_acc
+neural_available = st.session_state.neural_available
+neural_mae = st.session_state.neural_mae
+neural_acc = st.session_state.neural_acc
 
 # Use ensemble as the main model for predictions
 model = ensemble_model
@@ -201,10 +319,74 @@ with tab2:
     st.subheader("Model Performance Comparison")
     st.write("**Current Model: Ensemble (XGBoost + Random Forest)**")
 
+    # Advanced Model Training Buttons
+    st.subheader("🔬 Advanced Model Training")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🔧 Run Hyperparameter Optimization", 
+                    help="Optimize XGBoost hyperparameters using RandomizedSearchCV (takes ~1-2 minutes)",
+                    disabled=st.session_state.optimized_available):
+            with st.spinner("Running hyperparameter optimization... This may take 1-2 minutes."):
+                try:
+                    optimized_xgb_model = optimize_xgboost(X_train, y_train)
+                    opt_xgb_pred = optimized_xgb_model.predict(X_test)
+                    st.session_state.opt_xgb_mae = mean_absolute_error(y_test, opt_xgb_pred)
+                    st.session_state.opt_xgb_acc = accuracy_score(y_test, opt_xgb_pred)
+                    st.session_state.optimized_available = True
+                    st.success(f"✅ Optimization complete! Accuracy: {st.session_state.opt_xgb_acc:.3f}, MAE: {st.session_state.opt_xgb_mae:.3f}")
+                    st.rerun()  # Refresh the page to update the comparison table
+                except Exception as e:
+                    st.error(f"❌ Optimization failed: {e}")
+
+    with col2:
+        if st.button("🧠 Train Neural Network", 
+                    help="Train PyTorch neural network model (takes ~30-60 seconds)",
+                    disabled=st.session_state.neural_available):
+            with st.spinner("Training neural network... This may take 30-60 seconds."):
+                try:
+                    neural_model, neural_scaler = train_neural_model(X_train, y_train, epochs=50, batch_size=32)
+                    neural_pred_proba = predict_neural(neural_model, neural_scaler, X_test)
+                    neural_pred = np.argmax(neural_pred_proba, axis=1)
+                    st.session_state.neural_mae = mean_absolute_error(y_test, neural_pred)
+                    st.session_state.neural_acc = accuracy_score(y_test, neural_pred)
+                    st.session_state.neural_available = True
+                    st.success(f"✅ Neural network trained! Accuracy: {st.session_state.neural_acc:.3f}, MAE: {st.session_state.neural_mae:.3f}")
+                    st.rerun()  # Refresh the page to update the comparison table
+                except Exception as e:
+                    st.error(f"❌ Neural network training failed: {e}")
+
+    # Status indicators
+    status_col1, status_col2 = st.columns(2)
+    with status_col1:
+        if st.session_state.optimized_available:
+            if pretrained_models and pretrained_models['optimized_xgb_model']:
+                st.success("✅ Hyperparameter optimization: Pre-loaded")
+            else:
+                st.success("✅ Hyperparameter optimization: Complete")
+        else:
+            st.info("⏳ Hyperparameter optimization: Not run")
+    
+    with status_col2:
+        if st.session_state.neural_available:
+            if pretrained_models and pretrained_models['neural_model']:
+                st.success("✅ Neural network: Pre-loaded")
+            else:
+                st.success("✅ Neural network: Trained")
+        else:
+            st.info("⏳ Neural network: Not trained")
+
+    st.divider()
+
     # Create comparison dataframe
     model_names = ['XGBoost (Baseline)', 'Ensemble (Current)']
     mae_values = [xgb_mae, ensemble_mae]
     acc_values = [xgb_acc, ensemble_acc]
+
+    if optimized_available:
+        model_names.insert(1, 'XGBoost (Optimized)')
+        mae_values.insert(1, opt_xgb_mae)
+        acc_values.insert(1, opt_xgb_acc)
 
     if neural_available:
         model_names.append('Neural Network (PyTorch)')
@@ -262,6 +444,11 @@ with tab2:
     acc_improvement = ensemble_acc - xgb_acc
 
     st.success(f"✅ **Ensemble Model Improvement:** MAE reduced by {mae_improvement:.3f}, Accuracy improved by {acc_improvement:.3f}")
+
+    if optimized_available:
+        opt_mae_improvement = xgb_mae - opt_xgb_mae
+        opt_acc_improvement = opt_xgb_acc - xgb_acc
+        st.info(f"🔧 **XGBoost Optimization:** MAE reduced by {opt_mae_improvement:.3f}, Accuracy improved by {opt_acc_improvement:.3f}")
 
     if neural_available:
         neural_mae_improvement = xgb_mae - neural_mae
