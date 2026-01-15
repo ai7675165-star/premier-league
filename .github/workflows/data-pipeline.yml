@@ -104,3 +104,61 @@ jobs:
         run: |
           echo "Data pipeline failed - check logs for details"
           # Could add Slack/email notifications here in the future
+
+  validate-predictions:
+    needs: update-data
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-ci.txt
+
+      - name: Validate predictions
+        run: |
+          echo "Validating prediction accuracy..."
+          python -c "
+          from track_predictions import validate_predictions
+          import pandas as pd
+          
+          # Run validation
+          perf = validate_predictions()
+          
+          if perf is not None and len(perf) > 0:
+              completed = perf[perf['Correct'].notna()]
+              if len(completed) > 0:
+                  accuracy = completed['Correct'].mean()
+                  print(f'✅ Prediction validation completed: {accuracy:.1%} accuracy ({len(completed)} predictions)')
+              else:
+                  print('ℹ️  No predictions ready for validation yet')
+          else:
+              print('ℹ️  No prediction history found')
+          "
+
+      - name: Commit prediction validation updates
+        run: |
+          echo "Checking for prediction log changes..."
+          git config --local user.email 'action@github.com'
+          git config --local user.name 'GitHub Action'
+
+          # Check if predictions log has changes
+          if git diff --quiet data_files/predictions_log.csv 2>/dev/null; then
+            echo "No prediction validation updates to commit"
+          else
+            echo "Committing prediction validation updates..."
+            git add data_files/predictions_log.csv
+            git commit -m "Prediction validation update - $(date +'%Y-%m-%d')" || echo "No changes to commit"
+            git push
+            echo "Prediction validation updates committed and pushed"
+          fi
