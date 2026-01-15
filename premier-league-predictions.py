@@ -353,6 +353,30 @@ with tab2:
     else:
         st.info("Click 'Calculate Feature Importance' to analyze feature significance and enable PDF export.")
 
+    # Prediction Performance Tracker
+    st.markdown("---")
+    if st.checkbox("Show Prediction Performance Tracker"):
+        st.subheader("📈 Model Prediction Accuracy Over Time")
+        
+        # Import the tracking functions
+        from track_predictions import validate_predictions
+        
+        perf = validate_predictions()
+        
+        if perf is not None and len(perf) > 0:
+            completed = perf[perf['Correct'].notna()]
+            if len(completed) > 0:
+                accuracy = completed['Correct'].mean()
+                st.metric("Prediction Accuracy", f"{accuracy:.1%}", 
+                         f"{len(completed)} predictions validated")
+                st.dataframe(completed[['PredictionDate', 'MatchDate', 'HomeTeam', 'AwayTeam', 
+                                       'PredHomeWin', 'PredDraw', 'PredAwayWin', 'ActualResult', 'Correct']], 
+                           width='stretch', hide_index=True, height=get_dataframe_height(completed))
+            else:
+                st.info("No predictions have been validated yet. Predictions will be validated after match results are available.")
+        else:
+            st.info("No prediction history found. Start making predictions to track performance over time.")
+
 with tab3:
     # Load upcoming fixtures
     upcoming_csv = path.join(DATA_DIR, 'upcoming_fixtures.csv')
@@ -714,6 +738,50 @@ with tab3:
     if len(filtered_df) > 0:
         styled_df = filtered_df.style.apply(color_risk_rows, axis=1)
         st.dataframe(styled_df, width='stretch', hide_index=True, height=get_dataframe_height(filtered_df))
+        
+        # Add prediction logging functionality
+        st.markdown("---")
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            if st.button("📊 Log Predictions for Tracking", key="log_predictions", 
+                        help="Save these predictions to track accuracy over time"):
+                from track_predictions import log_prediction
+                
+                logged_count = 0
+                for idx, row in upcoming_df.iterrows():
+                    try:
+                        log_prediction(
+                            row['Date'],
+                            row['HomeTeam'], 
+                            row['AwayTeam'],
+                            row['HomeWin_Prob'],
+                            row['Draw_Prob'], 
+                            row['AwayWin_Prob']
+                        )
+                        logged_count += 1
+                    except Exception as e:
+                        st.error(f"Error logging prediction for {row['HomeTeam']} vs {row['AwayTeam']}: {e}")
+                
+                if logged_count > 0:
+                    st.success(f"✅ Successfully logged {logged_count} predictions for future accuracy tracking!")
+                    st.info("Predictions will be automatically validated against actual results as matches are played.")
+        
+        with col2:
+            if st.button("🔄 Refresh & Validate", key="validate_predictions",
+                        help="Check for completed matches and update prediction accuracy"):
+                from track_predictions import validate_predictions
+                perf = validate_predictions()
+                if perf is not None:
+                    completed = perf[perf['Correct'].notna()]
+                    if len(completed) > 0:
+                        accuracy = completed['Correct'].mean()
+                        st.success(f"✅ Validation complete! Current accuracy: {accuracy:.1%} ({len(completed)} predictions)")
+                    else:
+                        st.info("No predictions ready for validation yet.")
+                else:
+                    st.info("No prediction history to validate.")
+                    
     else:
         st.info("No matches found for the selected risk level. Try selecting 'All Matches' or a different risk category.")
 

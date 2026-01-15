@@ -193,85 +193,51 @@ if st.button("Get H2H Stats"):
 
 ---
 
-### 5. Prediction Performance Tracker
-**Priority:** Medium  
-**Effort:** Medium  
-**Impact:** High
+### 5. Prediction Performance Tracker ✅ IMPLEMENTED
 
-Track and display model prediction accuracy over time.
+**Status:** ✅ IMPLEMENTED - Prediction logging and validation system integrated into Streamlit app + Automated daily validation
+
+**Implementation:** `track_predictions.py` + UI integration in `premier-league-predictions.py` + Automated validation in GitHub Actions
 
 ```python
-# Create: track_predictions.py
-import pandas as pd
-from datetime import datetime
-from os import path
-
-PREDICTIONS_LOG = 'data_files/predictions_log.csv'
-
+# track_predictions.py - Core functionality
 def log_prediction(date, home_team, away_team, pred_home, pred_draw, pred_away):
     """Log a prediction for future validation"""
-    prediction = {
-        'PredictionDate': datetime.now().strftime('%Y-%m-%d'),
-        'MatchDate': date,
-        'HomeTeam': home_team,
-        'AwayTeam': away_team,
-        'PredHomeWin': pred_home,
-        'PredDraw': pred_draw,
-        'PredAwayWin': pred_away,
-        'ActualResult': None,  # To be filled after match
-        'Correct': None
-    }
     
-    if path.exists(PREDICTIONS_LOG):
-        df = pd.read_csv(PREDICTIONS_LOG)
-        df = pd.concat([df, pd.DataFrame([prediction])], ignore_index=True)
-    else:
-        df = pd.DataFrame([prediction])
-    
-    df.to_csv(PREDICTIONS_LOG, index=False)
-
 def validate_predictions():
     """Compare predictions with actual results"""
-    if not path.exists(PREDICTIONS_LOG):
-        return None
     
-    predictions = pd.read_csv(PREDICTIONS_LOG)
-    historical = pd.read_csv('data_files/combined_historical_data_with_calculations.csv', sep='\t')
-    
-    for idx, pred in predictions.iterrows():
-        if pd.isna(pred['ActualResult']):
-            # Find the actual match result
-            match = historical[
-                (historical['MatchDate'] == pred['MatchDate']) &
-                (historical['HomeTeam'] == pred['HomeTeam']) &
-                (historical['AwayTeam'] == pred['AwayTeam'])
-            ]
-            
-            if len(match) > 0:
-                actual = match.iloc[0]['FullTimeResult']
-                predicted = max(
-                    [(pred['PredHomeWin'], 'H'), 
-                     (pred['PredDraw'], 'D'), 
-                     (pred['PredAwayWin'], 'A')]
-                )[1]
-                
-                predictions.at[idx, 'ActualResult'] = actual
-                predictions.at[idx, 'Correct'] = (predicted == actual)
-    
-    predictions.to_csv(PREDICTIONS_LOG, index=False)
-    return predictions
-
-# UI Display
-if st.checkbox("Show Prediction Performance"):
-    st.subheader("Model Prediction Accuracy")
+# UI Integration in Predictive Data tab
+if st.checkbox("Show Prediction Performance Tracker"):
+    st.subheader("📈 Model Prediction Accuracy Over Time")
     perf = validate_predictions()
-    
     if perf is not None and len(perf) > 0:
         completed = perf[perf['Correct'].notna()]
         accuracy = completed['Correct'].mean()
         st.metric("Prediction Accuracy", f"{accuracy:.1%}")
-        st.dataframe(completed, hide_index=True)
+        st.dataframe(completed[...], width='stretch', hide_index=True)
+
+# Automated validation in .github/workflows/data-pipeline.yml
+- name: Validate predictions
+  run: |
+    echo "Validating prediction accuracy..."
+    python -c "
+    from track_predictions import validate_predictions
+    # Validation logic...
+    "
 ```
+
+**Features Added:**
+- Automatic prediction logging when "Log Predictions for Tracking" button is clicked
+- Real-time validation against actual match results
+- **Automated daily validation** via GitHub Actions (runs after data pipeline)
+- Accuracy metrics and historical prediction tracking
+- DataFrame display of prediction history with outcomes
+- Integrated into "Predictive Data" tab with checkbox toggle
+
+**Data Storage:** `data_files/predictions_log.csv` with columns for prediction details and validation results
+
+**Automation:** Predictions are automatically validated daily at 2 AM ET as part of the data pipeline workflow
 
 ---
 
@@ -301,9 +267,9 @@ Optimize Streamlit UI for mobile devices.
 - Match Result Confidence Levels
 - Team Form Tracker
 
-**Phase 2 (Week 3-4):**
+**Phase 2 (Week 3-4): ✅**
 - Head-to-Head History
-- Prediction Performance Tracker
+- Prediction Performance Tracker ✅ IMPLEMENTED
 
 **Phase 3 (Month 2):**
 - Export to PDF
