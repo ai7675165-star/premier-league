@@ -5,6 +5,7 @@ from os import path
 import os
 import numpy as np
 from scipy import stats
+from sklearn.impute import KNNImputer
 from scrape_injuries_web import scrape_football_injury_news as scrape_premier_injuries, create_injury_features
 from fetch_weather_data import add_weather_features, add_weather_impact_category
 from manager_data import get_current_manager, get_manager_stats, calculate_manager_advantage
@@ -360,6 +361,32 @@ historical_data_with_calculations = pd.merge(
 # Optionally drop the extra 'Team' columns from the merges
 historical_data_with_calculations.drop(columns=['Team', 'Team_Away'], inplace=True, errors='ignore')
 
+def smart_imputation(df):
+    """Use KNN imputation for missing values in numeric columns"""
+    print("Applying KNN imputation for missing data...")
+    
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    
+    # Only impute columns that have at least some non-null values
+    cols_to_impute = [col for col in numeric_cols if df[col].notna().sum() > 0]
+    
+    if len(cols_to_impute) > 0:
+        imputer = KNNImputer(n_neighbors=5)
+        imputed_array = imputer.fit_transform(df[cols_to_impute])
+        imputed_df = pd.DataFrame(imputed_array, columns=cols_to_impute, index=df.index)
+        df[cols_to_impute] = imputed_df
+    
+    # For columns that are all null, fill with 0 or mean if available
+    for col in numeric_cols:
+        if df[col].isnull().all():
+            df[col] = df[col].fillna(0)
+        elif df[col].isnull().any():
+            # If still has nulls after KNN (shouldn't happen), fill with mean
+            df[col] = df[col].fillna(df[col].mean())
+    
+    print(f"Imputed {len(cols_to_impute)} numeric columns")
+    return df
+
 def extract_betting_features(df):
     """
     Extract advanced features from betting odds
@@ -683,6 +710,9 @@ def add_manager_features(df):
 
     print(f"Added manager features for {len(df)} matches")
     return df
+
+# Apply KNN imputation for missing data
+historical_data_with_calculations = smart_imputation(historical_data_with_calculations)
 
 # Calculate advanced metrics
 print("Calculating advanced team metrics...")

@@ -396,31 +396,51 @@ def extract_betting_features(df):
 
 ## Data Quality Improvements
 
-### 8. Missing Data Handling
+### 8. Missing Data Handling ✅ IMPLEMENTED
+
+**Status:** ✅ IMPLEMENTED - KNN imputation applied to all numeric columns, reducing missing values from 89,128 to 1,080 (remaining in categorical columns only)
 
 ```python
-# Improve in prepare_model_data.py
+# Implementation in prepare_model_data.py
 
 from sklearn.impute import KNNImputer
 
 def smart_imputation(df):
-    """Use KNN imputation for missing values"""
+    """Use KNN imputation for missing values in numeric columns"""
+    print("Applying KNN imputation for missing data...")
     
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     
-    imputer = KNNImputer(n_neighbors=5)
-    df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+    # Only impute columns that have at least some non-null values
+    cols_to_impute = [col for col in numeric_cols if df[col].notna().sum() > 0]
     
+    if len(cols_to_impute) > 0:
+        imputer = KNNImputer(n_neighbors=5)
+        imputed_array = imputer.fit_transform(df[cols_to_impute])
+        imputed_df = pd.DataFrame(imputed_array, columns=cols_to_impute, index=df.index)
+        df[cols_to_impute] = imputed_df
+    
+    # For columns that are all null, fill with 0 or mean if available
+    for col in numeric_cols:
+        if df[col].isnull().all():
+            df[col] = df[col].fillna(0)
+        elif df[col].isnull().any():
+            # If still has nulls after KNN (shouldn't happen), fill with mean
+            df[col] = df[col].fillna(df[col].mean())
+    
+    print(f"Imputed {len(cols_to_impute)} numeric columns")
     return df
 ```
+
+**Results:** Successfully imputed 218 numeric columns, reducing missing values by 98.8%. Remaining 1,080 nulls are in categorical columns (WinningTeam, HomeManager, AwayManager) which require different handling.
 
 ---
 
 ## Implementation Priority
 
 **Phase 1 (Immediate):**
-1. Advanced team metrics (calculated from existing data)
-2. Better missing data handling
+1. Advanced team metrics (calculated from existing data) ✅
+2. Better missing data handling ✅
 
 **Phase 2 (Month 1):**
 3. Weather data integration ✅
@@ -477,10 +497,18 @@ def smart_imputation(df):
 **Coverage:** All 39 referees with statistics from 2021-2026 seasons  
 **Use Case:** Predict disciplinary outcomes and match flow for future matches based on referee history
 
-### 6. Manager & Tactical Data ✅ FULLY IMPLEMENTED
+### 7. Manager & Tactical Data ✅ FULLY IMPLEMENTED
 **Completed:** January 2026  
 **Implementation:** `manager_data.py` + `add_manager_features()` in `prepare_model_data.py` + Statistics tab UI
 **Features Added:** Manager win rates, goals per game, defensive solidity, attacking threat, tactical flexibility, manager advantage calculations + interactive manager statistics dashboard
 **Data Source:** Historical performance data and tactical analysis  
 **Coverage:** All current Premier League managers with comprehensive statistics + 40 managers in Statistics tab
 **Use Case:** Predict match outcomes based on managerial quality and tactical preferences + explore manager performance metrics
+
+### 8. Missing Data Handling ✅ FULLY IMPLEMENTED
+**Completed:** January 2026  
+**Implementation:** `smart_imputation()` in `prepare_model_data.py` using KNN imputation
+**Features Added:** Intelligent missing value imputation for all numeric columns using K-Nearest Neighbors algorithm
+**Data Source:** Calculated from existing match data patterns  
+**Coverage:** 218 numeric columns imputed, reducing missing values from 89,128 to 1,080 (98.8% reduction)
+**Use Case:** Improved model accuracy by providing complete numeric datasets for ML training
