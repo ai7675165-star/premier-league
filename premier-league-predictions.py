@@ -10,6 +10,7 @@ from sklearn.inspection import permutation_importance
 from scipy import stats
 from team_name_mapping import normalize_team_name
 from generate_pdf_report import generate_statistical_report, generate_quick_report
+from models.ensemble_predictor import create_ensemble_model, create_simple_ensemble
 
 DATA_DIR = 'data_files/'
 
@@ -141,14 +142,27 @@ if bad_cols:
 # --- Train/Test Split ---
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-# --- XGBoost Model ---
-model = XGBClassifier(eval_metric='mlogloss', random_state=42)
-model.fit(X_train, y_train)
+# --- Model Comparison: XGBoost vs Ensemble ---
 
-# --- Predictions & MAE ---
-y_pred = model.predict(X_test)
-mae = mean_absolute_error(y_test, y_pred)
-acc = accuracy_score(y_test, y_pred)
+# Train XGBoost model (baseline)
+xgb_model = XGBClassifier(eval_metric='mlogloss', random_state=42)
+xgb_model.fit(X_train, y_train)
+xgb_pred = xgb_model.predict(X_test)
+xgb_mae = mean_absolute_error(y_test, xgb_pred)
+xgb_acc = accuracy_score(y_test, xgb_pred)
+
+# Train Ensemble model
+ensemble_model = create_simple_ensemble()  # Use simple ensemble for faster training
+ensemble_model.fit(X_train, y_train)
+ensemble_pred = ensemble_model.predict(X_test)
+ensemble_mae = mean_absolute_error(y_test, ensemble_pred)
+ensemble_acc = accuracy_score(y_test, ensemble_pred)
+
+# Use ensemble as the main model for predictions
+model = ensemble_model
+y_pred = ensemble_pred
+mae = ensemble_mae
+acc = ensemble_acc
 
 model_trained = True
 
@@ -168,9 +182,56 @@ with tab1:
         st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width='stretch', hide_index=True)
 
 with tab2:
-    st.subheader("Model Performance")
-    st.write(f"Mean Absolute Error (MAE): **{mae:.3f}**")
-    st.write(f"Accuracy: **{acc:.3f}**")
+    st.subheader("Model Performance Comparison")
+    st.write("**Current Model: Ensemble (XGBoost + Random Forest)**")
+
+    # Create comparison dataframe
+    performance_data = {
+        'Model': ['XGBoost (Baseline)', 'Ensemble (Current)'],
+        'MAE': [xgb_mae, ensemble_mae],
+        'Accuracy': [xgb_acc, ensemble_acc],
+        'MAE Change': [0, ensemble_mae - xgb_mae],
+        'Accuracy Change': [0, ensemble_acc - xgb_acc]
+    }
+
+    perf_df = pd.DataFrame(performance_data)
+
+    # Display metrics with color coding
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric(
+            "Mean Absolute Error (MAE)",
+            f"{mae:.3f}",
+            f"{(ensemble_mae - xgb_mae):+.3f} vs XGBoost",
+            delta_color="inverse"  # Lower MAE is better (inverse)
+        )
+
+    with col2:
+        st.metric(
+            "Accuracy",
+            f"{acc:.3f}",
+            f"{(ensemble_acc - xgb_acc):+.3f} vs XGBoost",
+            delta_color="normal"  # Higher accuracy is better
+        )
+
+    # Detailed comparison table
+    st.subheader("Model Comparison Details")
+    st.dataframe(perf_df.style.format({
+        'MAE': '{:.3f}',
+        'Accuracy': '{:.3f}',
+        'MAE Change': '{:+.3f}',
+        'Accuracy Change': '{:+.3f}'
+    }).apply(lambda x: ['background-color: #d4edda' if x.name == 'Ensemble (Current)' else '' for i in x], axis=1))
+
+    # Performance interpretation
+    mae_improvement = xgb_mae - ensemble_mae
+    acc_improvement = ensemble_acc - xgb_acc
+
+    if mae_improvement > 0 or acc_improvement > 0:
+        st.success(f"✅ **Ensemble Model Improvement:** MAE reduced by {mae_improvement:.3f}, Accuracy improved by {acc_improvement:.3f}")
+    else:
+        st.warning("⚠️ Ensemble model performance is similar or slightly worse than XGBoost baseline")
 
     # --- Monte Carlo Permutation Importance ---
     st.subheader("Monte Carlo Feature Importance (Permutation)")
@@ -461,16 +522,16 @@ with tab3:
     # Clean column names
     X_upcoming.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X_upcoming.columns]
     
-    # Train a simple model using ONLY the features we have for upcoming matches
+    # Train a simple ensemble model using ONLY the features we have for upcoming matches
     # Filter historical data to same features
     available_features = X_upcoming.columns.tolist()
     X_simple = X[available_features]
-    
-    # Train simple model
-    simple_model = XGBClassifier(eval_metric='mlogloss', random_state=42, max_depth=4)
+
+    # Train simple ensemble model
+    simple_model = create_simple_ensemble()
     simple_model.fit(X_simple, y)
-    
-    # Predict probabilities using simple model
+
+    # Predict probabilities using simple ensemble model
     proba = simple_model.predict_proba(X_upcoming)
 
     # Add predictions to df
