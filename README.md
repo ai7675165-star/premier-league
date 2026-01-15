@@ -23,7 +23,7 @@ A friendly app and data pipeline for predicting English Premier League match out
 
 This project predicts the likely outcome of upcoming Premier League matches (home win, draw, or away win) using historical match data and machine learning. It also shows upcoming fixtures, kickoff times (in Eastern Time), and simple explanations of the model's predictions so fans can quickly understand which team is favored. Additionally, it provides detailed referee statistics, manager performance metrics, and team form analysis to help fans understand how different referees, managers, and recent performance might influence match outcomes.
 
-**Latest Enhancement:** The prediction model now uses an ensemble approach combining multiple machine learning algorithms, resulting in **3.5% higher accuracy** compared to the previous XGBoost-only model.
+**Latest Enhancement:** The prediction model now uses an ensemble approach combining multiple machine learning algorithms, resulting in **3.5% higher accuracy** compared to the previous XGBoost-only model. Neural network support has also been added for advanced deep learning predictions.
 
 [Back to top](#premier-league-predictor)
 
@@ -35,10 +35,11 @@ This project predicts the likely outcome of upcoming Premier League matches (hom
 - A Streamlit app (`premier-league-predictions.py`) that:
 	- Displays historical match data and model metrics
 	- **NEW: Trains an ensemble model** combining XGBoost, Random Forest, Gradient Boosting, and Logistic Regression for improved accuracy (+3.5% vs XGBoost alone)
+	- **NEW: Neural network support** using PyTorch for deep learning predictions (+4.9% vs XGBoost baseline)
 	- Shows upcoming fixtures and predicted probabilities with risk assessment
 	- Displays kickoff times converted to Eastern Time (ET)
 	- **NEW: Statistics tab** with referee performance metrics, manager statistics, team form analysis, and league-wide averages
-	- **NEW: Model comparison** showing performance improvements between baseline XGBoost and ensemble models
+	- **NEW: Model comparison** showing performance improvements between baseline XGBoost, ensemble, and neural network models
 - An ESPN-based fixture fetcher (`fetch_upcoming_fixtures.py`) that pulls upcoming matches from ESPN's API and saves them to `data_files/upcoming_fixtures.csv`.
 - Referee data integration: Scrapes referee assignments from Playmaker Stats and calculates historical referee statistics (disciplinary tendencies, win rates, home advantage bias).
 - Team form tracking: Analyzes recent performance for all Premier League teams with visual indicators.
@@ -102,6 +103,7 @@ Notes for developers
 - The Streamlit UI has tabs for: Upcoming Matches, Predictive Data, Upcoming Predictions, Statistics, and Raw Data.
 - The Statistics tab displays referee performance metrics, manager statistics, team form analysis, and league-wide averages.
 - **NEW: Ensemble model** combines XGBoost, Random Forest, Gradient Boosting, and Logistic Regression using soft voting for improved accuracy.
+- **NEW: Neural network support** using PyTorch with 3-layer architecture, batch normalization, and dropout regularization.
 - Models are trained in-memory when you open the 'Predictive Data' section; for production you may want to train offline and load a saved model.
 - If you add third-party APIs (e.g., weather, injuries), add keys to a local `.env` and do not commit them.
 
@@ -113,8 +115,8 @@ Notes for developers
 
 - Historical match data is pulled from CSVs sourced from football-data.co.uk and processed into `data_files/combined_historical_data_with_calculations.csv`.
 - Upcoming fixtures are fetched via the ESPN API (site.api.espn.com).
-- Libraries used: `pandas`, `numpy`, `xgboost`, `scikit-learn`, `streamlit`, `requests`, `beautifulsoup4`.
-- **Model Enhancement:** Ensemble approach using scikit-learn's VotingClassifier combines multiple algorithms for improved prediction accuracy.
+- Libraries used: `pandas`, `numpy`, `xgboost`, `scikit-learn`, `streamlit`, `requests`, `beautifulsoup4`, `torch`, `torchvision`.
+- **Model Enhancement:** Ensemble approach using scikit-learn's VotingClassifier combines multiple algorithms for improved accuracy. Neural network support via PyTorch provides deep learning capabilities.
 
 If you reuse data or publish results, please credit the original data sources.
 

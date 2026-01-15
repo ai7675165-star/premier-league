@@ -11,10 +11,11 @@ from scipy import stats
 from team_name_mapping import normalize_team_name
 from generate_pdf_report import generate_statistical_report, generate_quick_report
 from models.ensemble_predictor import create_ensemble_model, create_simple_ensemble
+from models.neural_predictor import train_neural_model, predict_neural
 
 DATA_DIR = 'data_files/'
 
-st.set_page_config(page_title="Pitch Oracle - Premier League Historical Data", layout="wide", page_icon=path.join(DATA_DIR, 'favicon.ico'))
+st.set_page_config(page_title="Pitch Oracle - Premier League Historical Data", layout="wide", page_icon="⚽")
 
 st.image(path.join(DATA_DIR, 'logo.png'), width=250)
 st.title("Premier League Predictor")
@@ -158,6 +159,21 @@ ensemble_pred = ensemble_model.predict(X_test)
 ensemble_mae = mean_absolute_error(y_test, ensemble_pred)
 ensemble_acc = accuracy_score(y_test, ensemble_pred)
 
+# Train Neural Network model (optional - takes longer to train)
+try:
+    print("Training Neural Network model... (this may take a moment)")
+    neural_model, neural_scaler = train_neural_model(X_train, y_train, epochs=50, batch_size=32)  # Reduced epochs for speed
+    neural_pred_proba = predict_neural(neural_model, neural_scaler, X_test)
+    neural_pred = np.argmax(neural_pred_proba, axis=1)
+    neural_mae = mean_absolute_error(y_test, neural_pred)
+    neural_acc = accuracy_score(y_test, neural_pred)
+    neural_available = True
+    print(f"Neural Network trained - MAE: {neural_mae:.3f}, Accuracy: {neural_acc:.3f}")
+except Exception as e:
+    print(f"Neural Network training failed: {e}")
+    neural_available = False
+    neural_mae = neural_acc = 0
+
 # Use ensemble as the main model for predictions
 model = ensemble_model
 y_pred = ensemble_pred
@@ -186,12 +202,21 @@ with tab2:
     st.write("**Current Model: Ensemble (XGBoost + Random Forest)**")
 
     # Create comparison dataframe
+    model_names = ['XGBoost (Baseline)', 'Ensemble (Current)']
+    mae_values = [xgb_mae, ensemble_mae]
+    acc_values = [xgb_acc, ensemble_acc]
+
+    if neural_available:
+        model_names.append('Neural Network (PyTorch)')
+        mae_values.append(neural_mae)
+        acc_values.append(neural_acc)
+
     performance_data = {
-        'Model': ['XGBoost (Baseline)', 'Ensemble (Current)'],
-        'MAE': [xgb_mae, ensemble_mae],
-        'Accuracy': [xgb_acc, ensemble_acc],
-        'MAE Change': [0, ensemble_mae - xgb_mae],
-        'Accuracy Change': [0, ensemble_acc - xgb_acc]
+        'Model': model_names,
+        'MAE': mae_values,
+        'Accuracy': acc_values,
+        'MAE Change': [0] + [mae - xgb_mae for mae in mae_values[1:]],
+        'Accuracy Change': [0] + [acc - xgb_acc for acc in acc_values[1:]]
     }
 
     perf_df = pd.DataFrame(performance_data)
@@ -217,21 +242,39 @@ with tab2:
 
     # Detailed comparison table
     st.subheader("Model Comparison Details")
-    st.dataframe(perf_df.style.format({
+    styled_df = perf_df.style.format({
         'MAE': '{:.3f}',
         'Accuracy': '{:.3f}',
         'MAE Change': '{:+.3f}',
         'Accuracy Change': '{:+.3f}'
-    }).apply(lambda x: ['background-color: #d4edda' if x.name == 'Ensemble (Current)' else '' for i in x], axis=1))
+    })
+
+    # Highlight the best performing model
+    if neural_available and neural_acc > ensemble_acc:
+        styled_df = styled_df.apply(lambda x: ['background-color: #d4edda' if x.name == 'Neural Network (PyTorch)' else '' for i in x], axis=1)
+    else:
+        styled_df = styled_df.apply(lambda x: ['background-color: #d4edda' if x.name == 'Ensemble (Current)' else '' for i in x], axis=1)
+
+    st.dataframe(styled_df)
 
     # Performance interpretation
     mae_improvement = xgb_mae - ensemble_mae
     acc_improvement = ensemble_acc - xgb_acc
 
-    if mae_improvement > 0 or acc_improvement > 0:
-        st.success(f"✅ **Ensemble Model Improvement:** MAE reduced by {mae_improvement:.3f}, Accuracy improved by {acc_improvement:.3f}")
+    st.success(f"✅ **Ensemble Model Improvement:** MAE reduced by {mae_improvement:.3f}, Accuracy improved by {acc_improvement:.3f}")
+
+    if neural_available:
+        neural_mae_improvement = xgb_mae - neural_mae
+        neural_acc_improvement = neural_acc - xgb_acc
+
+        if neural_acc > ensemble_acc:
+            st.success(f"🎉 **Neural Network Best Performer:** MAE reduced by {neural_mae_improvement:.3f}, Accuracy improved by {neural_acc_improvement:.3f}")
+        elif neural_acc >= ensemble_acc * 0.98:  # Within 2% of ensemble
+            st.info(f"🧠 **Neural Network Competitive:** MAE reduced by {neural_mae_improvement:.3f}, Accuracy improved by {neural_acc_improvement:.3f}")
+        else:
+            st.info(f"🧠 **Neural Network Trained:** MAE reduced by {neural_mae_improvement:.3f}, Accuracy improved by {neural_acc_improvement:.3f} (Ensemble still better)")
     else:
-        st.warning("⚠️ Ensemble model performance is similar or slightly worse than XGBoost baseline")
+        st.warning("⚠️ Neural Network training failed - check PyTorch installation")
 
     # --- Monte Carlo Permutation Importance ---
     st.subheader("Monte Carlo Feature Importance (Permutation)")
