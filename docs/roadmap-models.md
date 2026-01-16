@@ -101,179 +101,88 @@ Deep learning approach using PyTorch with 3-layer neural network (128→64→32 
 
 ---
 
-### 3. Poisson Regression for Goal Prediction
+### 3. Poisson Regression for Goal Prediction ✅ **COMPLETED**
 **Priority:** Medium  
 **Complexity:** Low  
-**Expected Improvement:** Better for goal-based betting
+**Expected Improvement:** Better for goal-based betting  
+**Status:** ✅ IMPLEMENTED - Poisson regression model integrated into Streamlit app with model selection UI
 
-Predict exact scorelines using Poisson distribution.
+Complete Poisson distribution-based goal prediction system with expected goals modeling, scoreline probability matrices, and match outcome conversion. Successfully integrated as an alternative prediction model in the Streamlit app with radio button selection between Simple Ensemble and Poisson Regression.
 
+**Features:**
+- Expected goals calculation using team attacking/defensive strengths
+- Poisson probability mass function for goal distributions
+- Scoreline probability matrix generation (up to 5 goals each)
+- Match outcome probability conversion from scorelines
+- Most likely score prediction
+- Integrated into Streamlit app with model selection UI
+- Real-time predictions for upcoming matches
+
+**Architecture:**
+- `models/poisson_predictor.py` - Core Poisson predictor class
+- Team strength-based expected goals estimation
+- Statistical modeling using scipy.stats.poisson
+- UI integration with radio button model selection
+- Automatic team statistics loading from `all_teams.csv`
+
+**Usage:**
 ```python
-# Create: models/poisson_predictor.py
-from scipy.stats import poisson
-import numpy as np
-import pandas as pd
+from models.poisson_predictor import predict_match_poisson
 
-def estimate_goals(home_attack, home_defense, away_attack, away_defense, league_avg=1.4):
-    """
-    Estimate expected goals using team strengths
-    
-    Args:
-        home_attack: Home team attacking strength
-        home_defense: Home team defensive strength
-        away_attack: Away team attacking strength
-        away_defense: Away team defensive strength
-        league_avg: League average goals per match
-    """
-    home_expected = league_avg * home_attack * away_defense
-    away_expected = league_avg * away_attack * home_defense
-    
-    return home_expected, away_expected
-
-def poisson_scoreline_probabilities(home_exp, away_exp, max_goals=5):
-    """Calculate probability matrix for all scorelines"""
-    
-    scoreline_probs = np.zeros((max_goals + 1, max_goals + 1))
-    
-    for home_goals in range(max_goals + 1):
-        for away_goals in range(max_goals + 1):
-            prob_home = poisson.pmf(home_goals, home_exp)
-            prob_away = poisson.pmf(away_goals, away_exp)
-            scoreline_probs[home_goals, away_goals] = prob_home * prob_away
-    
-    return scoreline_probs
-
-def predict_match_outcome(scoreline_probs):
-    """Convert scoreline probabilities to match outcome probabilities"""
-    
-    home_win_prob = 0
-    draw_prob = 0
-    away_win_prob = 0
-    
-    rows, cols = scoreline_probs.shape
-    
-    for home_goals in range(rows):
-        for away_goals in range(cols):
-            prob = scoreline_probs[home_goals, away_goals]
-            
-            if home_goals > away_goals:
-                home_win_prob += prob
-            elif home_goals == away_goals:
-                draw_prob += prob
-            else:
-                away_win_prob += prob
-    
-    return home_win_prob, draw_prob, away_win_prob
-
-# Full prediction pipeline
-def predict_with_poisson(home_team, away_team, team_stats):
-    """
-    Predict match using Poisson regression
-    
-    Args:
-        home_team: Home team name
-        away_team: Away team name
-        team_stats: DataFrame with team statistics
-    """
-    
-    # Get team stats
-    home_data = team_stats[team_stats['Team'] == home_team].iloc[0]
-    away_data = team_stats[team_stats['Team'] == away_team].iloc[0]
-    
-    # Calculate expected goals
-    home_exp, away_exp = estimate_goals(
-        home_attack=home_data['HomeGoalsAve'],
-        home_defense=1 / (home_data['AwayGoalsAve'] + 0.1),  # Inverse for defense
-        away_attack=away_data['AwayGoalsAve'],
-        away_defense=1 / (away_data['HomeGoalsAve'] + 0.1)
-    )
-    
-    # Get scoreline probabilities
-    scorelines = poisson_scoreline_probabilities(home_exp, away_exp)
-    
-    # Convert to match outcome
-    probs = predict_match_outcome(scorelines)
-    
-    return {
-        'HomeWinProb': probs[0],
-        'DrawProb': probs[1],
-        'AwayWinProb': probs[2],
-        'ExpectedHomeGoals': home_exp,
-        'ExpectedAwayGoals': away_exp,
-        'MostLikelyScore': np.unravel_index(scorelines.argmax(), scorelines.shape)
-    }
+# Predict Arsenal vs Chelsea
+result = predict_match_poisson('Arsenal', 'Chelsea', team_stats_df)
+print(f"Home Win: {result['HomeWinProb']:.3f}")
+print(f"Draw: {result['DrawProb']:.3f}")
+print(f"Away Win: {result['AwayWinProb']:.3f}")
+print(f"Expected Goals: {result['ExpectedHomeGoals']:.2f}-{result['ExpectedAwayGoals']:.2f}")
+print(f"Most Likely Score: {result['MostLikelyScore']}")
 ```
 
 ---
 
-### 4. Time Series LSTM for Momentum
+### 4. Time Series LSTM for Momentum ✅ **COMPLETED**
 **Priority:** Low  
 **Complexity:** High  
-**Expected Improvement:** Captures temporal patterns
+**Expected Improvement:** Captures temporal patterns  
+**Status:** ✅ IMPLEMENTED - LSTM neural network for temporal momentum analysis integrated into Streamlit app
 
+Complete Long Short-Term Memory (LSTM) implementation for capturing team momentum and temporal patterns in football performance. The model analyzes sequences of recent matches to predict future outcomes using deep learning.
+
+**Features:**
+- PyTorch-based LSTM neural network with configurable hidden layers
+- Sequence-based feature extraction from recent team performance
+- Temporal pattern recognition for momentum analysis
+- Automatic sequence preparation from historical match data
+- Integrated into Streamlit app with model selection UI
+- Early stopping and validation during training
+- Model persistence with pickle serialization
+
+**Architecture:**
+- LSTM layers with dropout regularization
+- Fully connected layers with ReLU activation
+- Sequence length: 5 matches per prediction
+- Input features: shots, corners, fouls, cards, match results
+- Output: 3-class probabilities (Home Win, Draw, Away Win)
+
+**Training Process:**
+- Prepares time series sequences from historical data
+- Standardizes features using scikit-learn
+- Trains with Adam optimizer and cross-entropy loss
+- Implements early stopping to prevent overfitting
+- Validates on held-out dataset during training
+
+**Usage:**
 ```python
-# Create: models/lstm_predictor.py
-import torch
-import torch.nn as nn
-import numpy as np
+from models.lstm_predictor import train_lstm_model, predict_match_lstm
 
-class FootballLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size=64, num_layers=2):
-        super(FootballLSTM, self).__init__()
-        
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=0.2
-        )
-        
-        self.fc = nn.Sequential(
-            nn.Linear(hidden_size, 32),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(32, 3),
-            nn.Softmax(dim=1)
-        )
-    
-    def forward(self, x):
-        lstm_out, _ = self.lstm(x)
-        last_output = lstm_out[:, -1, :]
-        return self.fc(last_output)
+# Train model
+predictor = train_lstm_model(historical_df, sequence_length=5, epochs=50)
 
-def prepare_sequence_data(df, sequence_length=5):
-    """
-    Prepare time series sequences for LSTM
-    Each sequence is last N matches for a team
-    """
-    sequences = []
-    labels = []
-    
-    teams = df['HomeTeam'].unique()
-    
-    for team in teams:
-        team_matches = df[
-            (df['HomeTeam'] == team) | (df['AwayTeam'] == team)
-        ].sort_values('MatchDate')
-        
-        for i in range(len(team_matches) - sequence_length):
-            seq = team_matches.iloc[i:i+sequence_length]
-            target = team_matches.iloc[i+sequence_length]
-            
-            # Extract features for sequence
-            seq_features = extract_match_features(seq, team)
-            sequences.append(seq_features)
-            
-            # Get label
-            if target['HomeTeam'] == team:
-                label = 0 if target['FullTimeResult'] == 'H' else (1 if target['FullTimeResult'] == 'D' else 2)
-            else:
-                label = 2 if target['FullTimeResult'] == 'A' else (1 if target['FullTimeResult'] == 'D' else 0)
-            
-            labels.append(label)
-    
-    return np.array(sequences), np.array(labels)
+# Predict match
+result = predict_match_lstm('Arsenal', 'Chelsea', historical_df)
+print(f"Home Win: {result['HomeWinProb']:.3f}")
+print(f"Draw: {result['DrawProb']:.3f}")
+print(f"Away Win: {result['AwayWinProb']:.3f}")
 ```
 
 ---
@@ -354,5 +263,6 @@ def compare_all_models(X_train, X_test, y_train, y_test):
 1. ✅ **COMPLETED:** Implement ensemble model (+3.5% accuracy improvement)
 2. ✅ **COMPLETED:** Experiment with neural networks (+4.9% accuracy vs XGBoost baseline) - Now with UI button activation
 3. ✅ **COMPLETED:** Optimize current XGBoost hyperparameters (+0.87% accuracy improvement) - Now with UI button activation
-4. **Week 1:** Add Poisson regression for goal predictions
-5. **Month 1:** Build comprehensive model comparison dashboard
+4. ✅ **COMPLETED:** Add Poisson regression for goal predictions - Integrated into Streamlit app with model selection
+5. ✅ **COMPLETED:** Implement LSTM Time Series for momentum analysis - Integrated into Streamlit app with model selection
+6. **Month 1:** Build comprehensive model comparison dashboard

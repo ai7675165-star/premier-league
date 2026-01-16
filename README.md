@@ -23,7 +23,7 @@ A friendly app and data pipeline for predicting English Premier League match out
 
 This project predicts the likely outcome of upcoming Premier League matches (home win, draw, or away win) using historical match data and machine learning. It also shows upcoming fixtures, kickoff times (in Eastern Time), and simple explanations of the model's predictions so fans can quickly understand which team is favored. Additionally, it provides detailed referee statistics, manager performance metrics, and team form analysis to help fans understand how different referees, managers, and recent performance might influence match outcomes.
 
-**Latest Enhancement:** The prediction model now uses an ensemble approach combining multiple machine learning algorithms, resulting in **3.5% higher accuracy** compared to the previous XGBoost-only model. Neural network support has also been added for advanced deep learning predictions.
+**Latest Enhancement:** The prediction model now uses an ensemble approach combining multiple machine learning algorithms, resulting in **3.5% higher accuracy** compared to the previous XGBoost-only model. Neural network and LSTM time series support have also been added for advanced deep learning predictions.
 
 [Back to top](#premier-league-predictor)
 
@@ -36,10 +36,11 @@ This project predicts the likely outcome of upcoming Premier League matches (hom
 	- Displays historical match data and model metrics
 	- **NEW: Trains an ensemble model** combining XGBoost, Random Forest, Gradient Boosting, and Logistic Regression for improved accuracy (+3.5% vs XGBoost alone)
 	- **NEW: Neural network support** using PyTorch for deep learning predictions (+4.9% vs XGBoost baseline)
+	- **NEW: LSTM time series model** for capturing team momentum and temporal patterns in performance
 	- Shows upcoming fixtures and predicted probabilities with risk assessment
 	- Displays kickoff times converted to Eastern Time (ET)
 	- **NEW: Statistics tab** with referee performance metrics, manager statistics, team form analysis, and league-wide averages
-	- **NEW: Model comparison** showing performance improvements between baseline XGBoost, ensemble, and neural network models
+	- **NEW: Model comparison** showing performance improvements between baseline XGBoost, ensemble, neural network, and LSTM time series models
 - An ESPN-based fixture fetcher (`fetch_upcoming_fixtures.py`) that pulls upcoming matches from ESPN's API and saves them to `data_files/upcoming_fixtures.csv`.
 - Referee data integration: Scrapes referee assignments from Playmaker Stats and calculates historical referee statistics (disciplinary tendencies, win rates, home advantage bias).
 - Team form tracking: Analyzes recent performance for all Premier League teams with visual indicators.

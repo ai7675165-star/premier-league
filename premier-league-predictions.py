@@ -13,6 +13,8 @@ from team_name_mapping import normalize_team_name
 from generate_pdf_report import generate_statistical_report, generate_quick_report
 from models.ensemble_predictor import create_ensemble_model, create_simple_ensemble
 from models.neural_predictor import train_neural_model, predict_neural
+from models.poisson_predictor import predict_match_poisson
+from models.lstm_predictor import predict_match_lstm
 from optimize_model import optimize_xgboost
 
 DATA_DIR = 'data_files/'
@@ -752,24 +754,95 @@ with tab3:
     # Clean column names
     X_upcoming.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X_upcoming.columns]
     
-    # Train a simple ensemble model using ONLY the features we have for upcoming matches
+    # Model Selection
+    st.subheader("🤖 Choose Prediction Model")
+    model_options = {
+        "Simple Ensemble": "Fast, reliable predictions using multiple ML algorithms",
+        "Poisson Regression": "Goal-based predictions using statistical modeling of expected goals",
+        "LSTM Time Series": "Deep learning model capturing team momentum and temporal patterns"
+    }
+    
+    selected_model = st.radio(
+        "Select prediction model:",
+        options=list(model_options.keys()),
+        index=0,  # Default to Simple Ensemble
+        help="Choose which model to use for predicting match outcomes"
+    )
+    
+    st.info(f"📊 **{selected_model}**: {model_options[selected_model]}")
+    
     # Filter historical data to same features
     available_features = X_upcoming.columns.tolist()
     X_simple = X[available_features]
 
-    # Train simple ensemble model
-    simple_model = create_simple_ensemble()
-    simple_model.fit(X_simple, y)
-
-    # Predict probabilities using simple ensemble model
-    proba = simple_model.predict_proba(X_upcoming)
-
-    # Add predictions to df
-    upcoming_df['HomeWin_Prob'] = proba[:, 0]
-    upcoming_df['Draw_Prob'] = proba[:, 1]
-    upcoming_df['AwayWin_Prob'] = proba[:, 2]
-
-    # Calculate risk scores for predictions (adapted from HenryOnilude methodology)
+    if selected_model == "Simple Ensemble":
+        # Train simple ensemble model
+        simple_model = create_simple_ensemble()
+        simple_model.fit(X_simple, y)
+        
+        # Predict probabilities using simple ensemble model
+        proba = simple_model.predict_proba(X_upcoming)
+        
+        # Add predictions to df
+        upcoming_df['HomeWin_Prob'] = proba[:, 0]
+        upcoming_df['Draw_Prob'] = proba[:, 1]
+        upcoming_df['AwayWin_Prob'] = proba[:, 2]
+        
+    elif selected_model == "Poisson Regression":
+        # Use Poisson regression for predictions
+        st.info("⚽ Using Poisson regression based on expected goals...")
+        
+        # Initialize prediction arrays
+        home_win_probs = []
+        draw_probs = []
+        away_win_probs = []
+        
+        # Get team stats for Poisson predictions
+        team_stats_df = all_teams.copy()
+        
+        for idx, match in upcoming_df.iterrows():
+            home_team = match['HomeTeam']
+            away_team = match['AwayTeam']
+            
+            # Get Poisson predictions
+            poisson_result = predict_match_poisson(home_team, away_team, team_stats_df)
+            
+            home_win_probs.append(poisson_result['HomeWinProb'])
+            draw_probs.append(poisson_result['DrawProb'])
+            away_win_probs.append(poisson_result['AwayWinProb'])
+        
+        # Add predictions to df
+        upcoming_df['HomeWin_Prob'] = home_win_probs
+        upcoming_df['Draw_Prob'] = draw_probs
+        upcoming_df['AwayWin_Prob'] = away_win_probs
+        
+    elif selected_model == "LSTM Time Series":
+        # Use LSTM time series model for predictions
+        st.info("🧠 Using LSTM deep learning model for temporal momentum analysis...")
+        
+        # Initialize prediction arrays
+        home_win_probs = []
+        draw_probs = []
+        away_win_probs = []
+        
+        # Load historical data for LSTM predictions
+        historical_df = df.copy()  # Use the main historical dataframe
+        
+        for idx, match in upcoming_df.iterrows():
+            home_team = match['HomeTeam']
+            away_team = match['AwayTeam']
+            
+            # Get LSTM predictions (currently uses home team momentum)
+            lstm_result = predict_match_lstm(home_team, away_team, historical_df)
+            
+            home_win_probs.append(lstm_result['HomeWinProb'])
+            draw_probs.append(lstm_result['DrawProb'])
+            away_win_probs.append(lstm_result['AwayWinProb'])
+        
+        # Add predictions to df
+        upcoming_df['HomeWin_Prob'] = home_win_probs
+        upcoming_df['Draw_Prob'] = draw_probs
+        upcoming_df['AwayWin_Prob'] = away_win_probs
     def calculate_prediction_risk(home_prob, draw_prob, away_prob):
         """
         Calculate prediction risk score (0-100) based on probability distribution.
