@@ -149,7 +149,7 @@ st.download_button(
 
 ---
 
-## 5. Add Last Update Timestamp
+## 5. Add Last Update Timestamp ✅ **COMPLETED**
 **Effort:** 2 minutes  
 **Impact:** Low
 
@@ -237,7 +237,7 @@ plotly
 
 ---
 
-## 8. Add Model Accuracy Widget
+## 8. Add Model Accuracy Widget ✅ **COMPLETED**
 **Effort:** 2 minutes  
 **Impact:** Medium
 
@@ -407,8 +407,8 @@ if countdown:
 - [ ] Add match commentary (5 min)
 - [ ] Color-code confidence (3 min)
 - [ ] Export CSV button (3 min)
-- [ ] Last update timestamp (2 min)
-- [ ] Model accuracy widget (2 min)
+- [x] Last update timestamp (2 min)
+- [x] Model accuracy widget (2 min)
 - [ ] Top features chart (5 min)
 - [ ] Team filter (3 min)
 - [ ] Improve layout with tabs (5 min)
