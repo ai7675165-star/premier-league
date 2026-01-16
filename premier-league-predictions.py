@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, accuracy_score
 from sklearn.inspection import permutation_importance
 from scipy import stats
+from datetime import datetime
 from team_name_mapping import normalize_team_name
 from generate_pdf_report import generate_statistical_report, generate_quick_report
 from models.ensemble_predictor import create_ensemble_model, create_simple_ensemble
@@ -23,6 +24,12 @@ st.set_page_config(page_title="Pitch Oracle - Premier League Historical Data", l
 
 st.image(path.join(DATA_DIR, 'logo.png'), width=250)
 st.title("Premier League Predictor")
+
+# Show last update timestamp for fixtures data
+fixtures_file = path.join(DATA_DIR, 'upcoming_fixtures.csv')
+if path.exists(fixtures_file):
+    last_updated = datetime.fromtimestamp(os.path.getmtime(fixtures_file))
+    st.caption(f"Last updated: {last_updated.strftime('%Y-%m-%d %I:%M %p ET')}")
 
 # Performance note
 # st.info("🚀 **Performance Mode:** Models are pre-trained nightly. Advanced features like hyperparameter optimization and neural networks are available on-demand via buttons below.")
@@ -320,6 +327,32 @@ with tab1:
 with tab2:
     st.subheader("Model Performance Comparison")
     st.write("**Current Model: Ensemble (XGBoost + Random Forest)**")
+
+    # Model Accuracy Widget - Prominent display of current model performance
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            label="Model Accuracy",
+            value=f"{acc:.1%}",
+            delta=f"{acc - 0.5:.1%} vs random"
+        )
+
+    with col2:
+        st.metric(
+            label="Mean Absolute Error",
+            value=f"{mae:.3f}",
+            delta=f"{0.67 - mae:.3f} vs baseline"
+        )
+
+    with col3:
+        predictions_count = len(y_test)
+        st.metric(
+            label="Test Predictions",
+            value=predictions_count
+        )
+
+    st.divider()
 
     # Advanced Model Training Buttons
     st.subheader("🔬 Advanced Model Training")
