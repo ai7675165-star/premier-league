@@ -1375,6 +1375,107 @@ with tab4:
     summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
     st.dataframe(summary_df, width='stretch', hide_index=True)
 
+    st.markdown("---")
+    st.subheader("🏆 Head-to-Head Analyzer")
+    st.write("Compare historical match results between any two Premier League teams")
+
+    # Head-to-Head History function
+    def get_h2h_stats(home_team, away_team, num_matches=10):
+        """Get head-to-head statistics between two teams"""
+        h2h = df[
+            ((df['HomeTeam'] == home_team) & (df['AwayTeam'] == away_team)) |
+            ((df['HomeTeam'] == away_team) & (df['AwayTeam'] == home_team))
+        ].sort_values('MatchDate', ascending=False).head(num_matches)
+
+        return h2h[['MatchDate', 'HomeTeam', 'AwayTeam', 'FullTimeHomeGoals', 'FullTimeAwayGoals', 'FullTimeResult']]
+
+    # UI Component for team selection
+    col1, col2 = st.columns(2)
+    with col1:
+        team1 = st.selectbox("Select Team 1", sorted(df['HomeTeam'].unique()), key="h2h_team1")
+    with col2:
+        team2 = st.selectbox("Select Team 2", sorted(df['AwayTeam'].unique()), key="h2h_team2")
+
+    if st.button("🔍 Analyze Head-to-Head History", key="h2h_button"):
+        if team1 != team2:
+            h2h_df = get_h2h_stats(team1, team2, num_matches=10)
+
+            if len(h2h_df) > 0:
+                st.success(f"Found {len(h2h_df)} historical matches between {team1} and {team2}")
+
+                # Calculate H2H statistics
+                team1_wins = 0
+                team2_wins = 0
+                draws = 0
+                team1_goals = 0
+                team2_goals = 0
+
+                for _, match in h2h_df.iterrows():
+                    if match['HomeTeam'] == team1:
+                        team1_goals += match['FullTimeHomeGoals']
+                        team2_goals += match['FullTimeAwayGoals']
+                        if match['FullTimeResult'] == 'H':
+                            team1_wins += 1
+                        elif match['FullTimeResult'] == 'A':
+                            team2_wins += 1
+                        else:
+                            draws += 1
+                    else:  # team1 is away
+                        team1_goals += match['FullTimeAwayGoals']
+                        team2_goals += match['FullTimeHomeGoals']
+                        if match['FullTimeResult'] == 'A':
+                            team1_wins += 1
+                        elif match['FullTimeResult'] == 'H':
+                            team2_wins += 1
+                        else:
+                            draws += 1
+
+                # Display summary statistics
+                st.subheader("📊 Head-to-Head Summary")
+                summary_cols = st.columns(4)
+                with summary_cols[0]:
+                    st.metric(f"{team1} Wins", team1_wins)
+                with summary_cols[1]:
+                    st.metric(f"{team2} Wins", team2_wins)
+                with summary_cols[2]:
+                    st.metric("Draws", draws)
+                with summary_cols[3]:
+                    st.metric("Total Goals", f"{team1_goals}-{team2_goals}")
+
+                # Display recent matches
+                st.subheader("📅 Recent Matches")
+                st.write("Most recent matches first:")
+
+                # Format the dataframe for better display
+                display_h2h = h2h_df.copy()
+                display_h2h['Match Date'] = pd.to_datetime(display_h2h['MatchDate']).dt.strftime('%m/%d/%Y')
+
+                # Add result interpretation
+                def format_result(row):
+                    if row['HomeTeam'] == team1:
+                        if row['FullTimeResult'] == 'H':
+                            return f"{team1} {row['FullTimeHomeGoals']}-{row['FullTimeAwayGoals']} {team2} (W)"
+                        elif row['FullTimeResult'] == 'A':
+                            return f"{team1} {row['FullTimeHomeGoals']}-{row['FullTimeAwayGoals']} {team2} (L)"
+                        else:
+                            return f"{team1} {row['FullTimeHomeGoals']}-{row['FullTimeAwayGoals']} {team2} (D)"
+                    else:
+                        if row['FullTimeResult'] == 'A':
+                            return f"{team2} {row['FullTimeHomeGoals']}-{row['FullTimeAwayGoals']} {team1} (W)"
+                        elif row['FullTimeResult'] == 'H':
+                            return f"{team2} {row['FullTimeHomeGoals']}-{row['FullTimeAwayGoals']} {team1} (L)"
+                        else:
+                            return f"{team2} {row['FullTimeHomeGoals']}-{row['FullTimeAwayGoals']} {team1} (D)"
+
+                display_h2h['Result'] = display_h2h.apply(format_result, axis=1)
+                display_h2h = display_h2h[['Match Date', 'Result']]
+
+                st.dataframe(display_h2h, width=400, hide_index=True, height=get_dataframe_height(display_h2h))
+            else:
+                st.warning(f"No historical matches found between {team1} and {team2}")
+        else:
+            st.warning("Please select two different teams to compare")
+
 with tab5:
     st.subheader("Historical Data")
     df_sorted = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
