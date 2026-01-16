@@ -92,85 +92,92 @@ st.dataframe(upcoming_df[[
 
 ---
 
-### 3. Team Form Tracker
-**Priority:** Medium  
-**Effort:** Medium  
-**Impact:** High
+### 3. Team Form Tracker ✅ IMPLEMENTED
 
-Visual display of team form (last 5-10 matches).
+**Status:** ✅ IMPLEMENTED - Advanced team form analysis with visual indicators and detailed statistics in Statistics tab
+
+**Implementation:** `analyze_team_form.py` + UI integration in Statistics tab of `premier-league-predictions.py`
 
 ```python
-# Create new file: analyze_team_form.py
-import pandas as pd
-from os import path
-
-DATA_DIR = 'data_files/'
-
+# analyze_team_form.py - Core functionality
 def get_team_form(team_name, num_matches=5):
-    """Get recent form for a specific team"""
-    df = pd.read_csv(path.join(DATA_DIR, 'combined_historical_data_with_calculations.csv'), sep='\t')
+    """Get recent form string for a specific team"""
     
-    # Get matches where team played
-    team_matches = df[
-        (df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)
-    ].sort_values('MatchDate', ascending=False).head(num_matches)
-    
-    form = []
-    for _, match in team_matches.iterrows():
-        if match['HomeTeam'] == team_name:
-            result = match['FullTimeResult']
-            if result == 'H':
-                form.append('W')
-            elif result == 'D':
-                form.append('D')
-            else:
-                form.append('L')
-        else:
-            result = match['FullTimeResult']
-            if result == 'A':
-                form.append('W')
-            elif result == 'D':
-                form.append('D')
-            else:
-                form.append('L')
-    
-    return ''.join(form)
+def get_team_form_stats(team_name, num_matches=5):
+    """Get detailed form statistics including wins/draws/losses/points"""
 
-# UI Integration
-if st.checkbox("Show Team Form"):
-    st.subheader("Team Form Guide")
-    teams = sorted(df['HomeTeam'].unique())
-    
-    form_data = []
-    for team in teams:
-        form = get_team_form(team)
-        wins = form.count('W')
-        form_data.append({
-            'Team': team,
-            'Last 5': form,
-            'Wins': wins,
-            'Form Score': wins * 3 + form.count('D')
-        })
-    
-    form_df = pd.DataFrame(form_data).sort_values('Form Score', ascending=False)
-    st.dataframe(form_df, hide_index=True)
+# UI Integration in Statistics tab
+st.subheader("📊 Team Form Guide")
+st.write("Recent performance analysis for all Premier League teams (last 5 matches)")
+
+from analyze_team_form import get_team_form_stats
+
+teams = sorted(df['HomeTeam'].unique())
+
+form_data = []
+for team in teams:
+    stats = get_team_form_stats(team, num_matches=5)
+    form_data.append({
+        'Team': team,
+        'Last 5': stats['form_string'],
+        'Wins': stats['wins'],
+        'Draws': stats['draws'],
+        'Losses': stats['losses'],
+        'Points': stats['points'],
+        'Form Score': stats['wins'] * 3 + stats['draws']
+    })
+
+form_df = pd.DataFrame(form_data).sort_values('Form Score', ascending=False)
+
+# Enhanced display with visual indicators
+def color_form_results(form_string):
+    colored = []
+    for result in form_string:
+        if result == 'W':
+            colored.append('🟢')  # Green for wins
+        elif result == 'D':
+            colored.append('🟡')  # Yellow for draws
+        else:
+            colored.append('🔴')  # Red for losses
+    return ' '.join(colored)
+
+display_df['Form Visual'] = display_df['Last 5'].apply(color_form_results)
+st.dataframe(display_df, width='stretch', hide_index=True)
+
+# Form summary with league-wide statistics
+st.subheader("Form Summary")
+summary_stats = {
+    'Total Matches Analyzed': total_matches,
+    'Average Points per Team': f"{avg_points:.1f}",
+    'Best Form Team': f"{best_form_team} ({best_form_score} points)",
+    'Teams with Perfect Form': len(form_df[form_df['Losses'] == 0]),
+    'Teams Winless': len(form_df[form_df['Wins'] == 0])
+}
 ```
+
+**Features Added:**
+- Comprehensive form analysis for all Premier League teams
+- Visual form indicators (🟢 Win, 🟡 Draw, 🔴 Loss)
+- Detailed statistics: wins, draws, losses, points from last 5 matches
+- Form scoring system (3 points per win, 1 per draw)
+- League-wide summary statistics
+- Integrated into Statistics tab with automatic data loading
+- Responsive table display with proper formatting
+
+**Data Source:** `data_files/combined_historical_data_with_calculations_new.csv`
 
 ---
 
-### 4. Head-to-Head History
-**Priority:** Medium  
-**Effort:** Low  
-**Impact:** Medium
+### 4. Head-to-Head History ✅ IMPLEMENTED
 
-Show historical results between two teams.
+**Status:** ✅ IMPLEMENTED - Interactive head-to-head analyzer with historical match results and statistics
+
+**Implementation:** UI integration in Statistics tab of `premier-league-predictions.py`
 
 ```python
-# Add to premier-league-predictions.py
+# Head-to-Head History function
 def get_h2h_stats(home_team, away_team, num_matches=10):
-    """Get head-to-head statistics"""
-    df = pd.read_csv(path.join(DATA_DIR, 'combined_historical_data_with_calculations.csv'), sep='\t')
-    
+    """Get head-to-head statistics between two teams"""
     h2h = df[
         ((df['HomeTeam'] == home_team) & (df['AwayTeam'] == away_team)) |
         ((df['HomeTeam'] == away_team) & (df['AwayTeam'] == home_team))
@@ -178,18 +185,35 @@ def get_h2h_stats(home_team, away_team, num_matches=10):
     
     return h2h[['MatchDate', 'HomeTeam', 'AwayTeam', 'FullTimeHomeGoals', 'FullTimeAwayGoals', 'FullTimeResult']]
 
-# UI Component
-st.subheader("Head-to-Head Analyzer")
+# UI Component in Statistics tab
+st.subheader("🏆 Head-to-Head Analyzer")
+st.write("Compare historical match results between any two Premier League teams")
+
 col1, col2 = st.columns(2)
 with col1:
-    team1 = st.selectbox("Home Team", sorted(df['HomeTeam'].unique()))
+    team1 = st.selectbox("Select Team 1", sorted(df['HomeTeam'].unique()))
 with col2:
-    team2 = st.selectbox("Away Team", sorted(df['AwayTeam'].unique()))
+    team2 = st.selectbox("Select Team 2", sorted(df['AwayTeam'].unique()))
 
-if st.button("Get H2H Stats"):
-    h2h_df = get_h2h_stats(team1, team2)
-    st.dataframe(h2h_df, hide_index=True)
+if st.button("🔍 Analyze Head-to-Head History"):
+    if team1 != team2:
+        h2h_df = get_h2h_stats(team1, team2, num_matches=10)
+        
+        # Calculate and display H2H statistics
+        # Show wins, draws, goals summary
+        # Display formatted recent matches table
 ```
+
+**Features Added:**
+- Interactive team selection with dropdown menus
+- Comprehensive head-to-head statistics (wins, draws, goals scored/conceded)
+- Historical match results display with formatted scores and outcomes
+- Visual summary metrics showing overall H2H record
+- Integrated into Statistics tab with button-triggered analysis
+- Error handling for same team selection and no matches found
+- Responsive table display with proper formatting
+
+**Data Source:** `data_files/combined_historical_data_with_calculations_new.csv`
 
 ---
 
