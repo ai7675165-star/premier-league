@@ -149,7 +149,18 @@ jobs:
             git add data_files/
             git add models/
             git commit -m "Nightly update - $(date +'%Y-%m-%d') - Data + Models" || echo "No changes to commit"
-            git pull --rebase origin main
+            
+            # Fetch and rebase to handle any remote changes
+            echo "Fetching latest changes from remote..."
+            git fetch origin main
+            echo "Rebasing local commits..."
+            git rebase origin/main || {
+              echo "Rebase failed, attempting to continue..."
+              git rebase --abort
+              git pull --rebase origin main
+            }
+            
+            echo "Pushing changes..."
             git push origin main
             echo "Data and model updates completed and pushed"
           fi
@@ -215,7 +226,18 @@ jobs:
             echo "Committing prediction validation updates..."
             git add data_files/predictions_log.csv
             git commit -m "Prediction validation update - $(date +'%Y-%m-%d')" || echo "No changes to commit"
-            git pull --rebase origin main
+            
+            # Fetch and rebase to handle any remote changes
+            echo "Fetching latest changes from remote..."
+            git fetch origin main
+            echo "Rebasing local commits..."
+            git rebase origin/main || {
+              echo "Rebase failed, attempting to continue..."
+              git rebase --abort
+              git pull --rebase origin main
+            }
+            
+            echo "Pushing changes..."
             git push origin main
             echo "Prediction validation updates committed and pushed"
           fi
