@@ -31,7 +31,7 @@ def load_and_preprocess_data():
     df = pd.read_csv(csv_path, sep='\t')
 
     # Clean column names to be XGBoost compatible (remove <, >, [, ])
-    df.columns = df.columns.str.replace(r'[<>[\]]', '_', regex=True)
+    df.columns = df.columns.str.replace('<', '_').str.replace('>', '_').str.replace('[', '_').str.replace(']', '_')
 
     # Target variable (3-class: Home Win=0, Draw=1, Away Win=2)
     target_map = {'H': 0, 'D': 1, 'A': 2}
@@ -48,17 +48,26 @@ def load_and_preprocess_data():
     ]
 
     # Get numeric features only
-    X = df.select_dtypes(include=[np.number]).drop(columns=exclude_cols, errors='ignore')
+    X_numeric = df.select_dtypes(include=[np.number]).drop(columns=exclude_cols, errors='ignore')
 
     # Handle categorical columns by encoding them
     cat_cols = df.select_dtypes(include=['object']).columns
+    X_categorical = pd.DataFrame()
     for col in cat_cols:
         if col not in exclude_cols:
             le = LabelEncoder()
-            X[col] = le.fit_transform(df[col].astype(str))
+            X_categorical[col] = le.fit_transform(df[col].astype(str))
+
+    # Combine numeric and categorical features
+    X = pd.concat([X_numeric, X_categorical], axis=1)
 
     # Fill any remaining NaN values
     X = X.fillna(X.mean())
+
+    # Ensure X is a DataFrame with clean column names
+    if isinstance(X, pd.DataFrame):
+        # Reset column names to generic names to avoid XGBoost issues
+        X.columns = [f'feature_{i}' for i in range(X.shape[1])]
 
     # Convert to numpy array to ensure compatibility with XGBoost
     X = X.values
@@ -69,6 +78,7 @@ def train_and_save_models():
     """Train all models and save them to disk"""
     start_time = time.time()
     print(f"🚀 Starting model training pipeline at {time.strftime('%H:%M:%S')}")
+    print(f"📋 Code version: XGBoost column fix v1.1 - {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     print("Loading and preprocessing data...")
     data_start = time.time()
