@@ -140,6 +140,11 @@ jobs:
           echo "Checking for changes..."
           git config --local user.email 'action@github.com'
           git config --local user.name 'GitHub Action'
+          
+          # Fetch latest changes BEFORE checking for local changes
+          echo "Fetching latest remote changes before committing..."
+          git fetch origin main
+          git reset --hard origin/main
 
           # Check if there are changes
           if git diff --quiet && git diff --staged --quiet; then
@@ -150,18 +155,9 @@ jobs:
             git add models/
             git commit -m "Nightly update - $(date +'%Y-%m-%d') - Data + Models" || echo "No changes to commit"
             
-            # Fetch and rebase to handle any remote changes
-            echo "Fetching latest changes from remote..."
-            git fetch origin main
-            echo "Rebasing local commits..."
-            git rebase origin/main || {
-              echo "Rebase failed, attempting to continue..."
-              git rebase --abort
-              git pull --rebase origin main
-            }
-            
+            # Push with force-with-lease to safely update
             echo "Pushing changes..."
-            git push origin main
+            git push origin main --force-with-lease
             echo "Data and model updates completed and pushed"
           fi
 
@@ -218,6 +214,11 @@ jobs:
           echo "Checking for prediction log changes..."
           git config --local user.email 'action@github.com'
           git config --local user.name 'GitHub Action'
+          
+          # Fetch latest changes BEFORE checking for local changes
+          echo "Fetching latest remote changes before committing..."
+          git fetch origin main
+          git reset --hard origin/main
 
           # Check if predictions log has changes
           if git diff --quiet data_files/predictions_log.csv 2>/dev/null; then
@@ -227,17 +228,8 @@ jobs:
             git add data_files/predictions_log.csv
             git commit -m "Prediction validation update - $(date +'%Y-%m-%d')" || echo "No changes to commit"
             
-            # Fetch and rebase to handle any remote changes
-            echo "Fetching latest changes from remote..."
-            git fetch origin main
-            echo "Rebasing local commits..."
-            git rebase origin/main || {
-              echo "Rebase failed, attempting to continue..."
-              git rebase --abort
-              git pull --rebase origin main
-            }
-            
+            # Push with force-with-lease to safely update
             echo "Pushing changes..."
-            git push origin main
+            git push origin main --force-with-lease
             echo "Prediction validation updates committed and pushed"
           fi
