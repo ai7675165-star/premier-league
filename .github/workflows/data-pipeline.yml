@@ -140,11 +140,6 @@ jobs:
           echo "Checking for changes..."
           git config --local user.email 'action@github.com'
           git config --local user.name 'GitHub Action'
-          
-          # Fetch latest changes BEFORE checking for local changes
-          echo "Fetching latest remote changes before committing..."
-          git fetch origin main
-          git reset --hard origin/main
 
           # Check if there are changes
           if git diff --quiet && git diff --staged --quiet; then
@@ -155,10 +150,17 @@ jobs:
             git add models/
             git commit -m "Nightly update - $(date +'%Y-%m-%d') - Data + Models" || echo "No changes to commit"
             
-            # Push with force-with-lease to safely update
-            echo "Pushing changes..."
-            git push origin main --force-with-lease
-            echo "Data and model updates completed and pushed"
+            # Pull any remote changes and push in a loop with retries
+            echo "Pushing changes with retry logic..."
+            for i in {1..5}; do
+              if git pull --rebase origin main && git push origin main; then
+                echo "Successfully pushed changes"
+                break
+              else
+                echo "Push failed, retrying in 5 seconds... (attempt $i/5)"
+                sleep 5
+              fi
+            done
           fi
 
       - name: Notification on failure
@@ -214,11 +216,6 @@ jobs:
           echo "Checking for prediction log changes..."
           git config --local user.email 'action@github.com'
           git config --local user.name 'GitHub Action'
-          
-          # Fetch latest changes BEFORE checking for local changes
-          echo "Fetching latest remote changes before committing..."
-          git fetch origin main
-          git reset --hard origin/main
 
           # Check if predictions log has changes
           if git diff --quiet data_files/predictions_log.csv 2>/dev/null; then
@@ -228,8 +225,15 @@ jobs:
             git add data_files/predictions_log.csv
             git commit -m "Prediction validation update - $(date +'%Y-%m-%d')" || echo "No changes to commit"
             
-            # Push with force-with-lease to safely update
-            echo "Pushing changes..."
-            git push origin main --force-with-lease
-            echo "Prediction validation updates committed and pushed"
+            # Pull any remote changes and push in a loop with retries
+            echo "Pushing changes with retry logic..."
+            for i in {1..5}; do
+              if git pull --rebase origin main && git push origin main; then
+                echo "Successfully pushed changes"
+                break
+              else
+                echo "Push failed, retrying in 5 seconds... (attempt $i/5)"
+                sleep 5
+              fi
+            done
           fi
