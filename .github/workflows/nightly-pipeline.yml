@@ -1,5 +1,5 @@
-name: Premier League Data Pipeline
-# Updated Python version to 3.10 for Streamlit compatibility
+name: Nightly Data & Model Pipeline
+# Fresh workflow file to avoid caching issues
 on:
   schedule:
     - cron: '0 7 * * *'  # 2 AM ET (7 AM UTC) daily
