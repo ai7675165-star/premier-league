@@ -30,6 +30,9 @@ def load_and_preprocess_data():
 
     df = pd.read_csv(csv_path, sep='\t')
 
+    # Clean column names to be XGBoost compatible (remove <, >, [, ])
+    df.columns = df.columns.str.replace(r'[<>[\]]', '_', regex=True)
+
     # Target variable (3-class: Home Win=0, Draw=1, Away Win=2)
     target_map = {'H': 0, 'D': 1, 'A': 2}
     y = df['FullTimeResult'].map(target_map)
@@ -56,6 +59,9 @@ def load_and_preprocess_data():
 
     # Fill any remaining NaN values
     X = X.fillna(X.mean())
+
+    # Convert to numpy array to ensure compatibility with XGBoost
+    X = X.values
 
     return X, y
 
