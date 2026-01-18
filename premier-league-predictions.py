@@ -7,6 +7,7 @@ from os import path
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, accuracy_score
+from sklearn.preprocessing import LabelEncoder
 from sklearn.inspection import permutation_importance
 from scipy import stats
 from datetime import datetime
@@ -196,35 +197,40 @@ df['target'] = df['FullTimeResult'].map(target_map)
 
 # Drop columns not useful for modeling or that leak the result
 drop_cols = [
-    'MatchDate', 'KickoffTime', 'FullTimeResult', 'HomeTeam', 'AwayTeam', 'WinningTeam',
-    'HomeWin', 'AwayWin', 'Draw',  'HalfTimeHomeWin', 'HalfTimeAwayWin', 'HalfTimeDraw', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
-    'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals', 'HomePoints', 'AwayPoints',
-    'HomeShots', 'AwayShots', 'HomeShotsOnTarget', 'AwayShotsOnTarget', 'HomeFouls', 'AwayFouls', 
-    'HomeCorners', 'AwayCorners', 'HomeYellowCards', 'AwayYellowCards', 'HomeRedCards', 'AwayRedCards',
-    'HomeManagerFormation', 'AwayManagerFormation'  # Excluded from model as not statistically relevant
+    'FullTimeResult', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
+    'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals',
+    'HomeWin', 'AwayWin', 'Draw', 'WinningTeam',
+    'HomePoints', 'AwayPoints', 'HomeTeamCumulativePoints', 'AwayTeamCumulativePoints',
+    'MatchDate', 'KickoffTime', 'Season', 'Round', 'Venue', 'Referee',
+    'HomeTeam', 'AwayTeam', 'Division'
 ]
 X = df.drop(columns=[col for col in drop_cols if col in df.columns] + ['target'], errors='ignore')
 y = df['target']
 
-# Fill NA and encode categoricals
-for col in X.select_dtypes(include='object').columns:
-    X[col] = X[col].astype('category').cat.codes
-X = X.fillna(X.mean(numeric_only=True))
+# Get numeric features only
+X_numeric = X.select_dtypes(include=[np.number]).drop(columns=drop_cols, errors='ignore')
 
-# Select only numeric columns
-X = X.select_dtypes(include=[np.number])
+# Handle categorical columns by encoding them
+cat_cols = X.select_dtypes(include=['object']).columns
+X_categorical = pd.DataFrame()
+for col in cat_cols:
+    if col not in drop_cols:
+        le = LabelEncoder()
+        X_categorical[col] = le.fit_transform(X[col].astype(str))
 
-# Clean column names for XGBoost compatibility
-X.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X.columns]
+# Combine numeric and categorical features
+X = pd.concat([X_numeric, X_categorical], axis=1)
 
-# Remove columns that are not 1D or have object dtype
-bad_cols = []
-for col in X.columns:
-    if isinstance(X[col].iloc[0], (pd.Series, pd.DataFrame)) or X[col].dtype == 'O':
-        bad_cols.append(col)
-if bad_cols:
-    # st.warning(f"Removing columns with unsupported types for XGBoost: {bad_cols}")
-    X = X.drop(columns=bad_cols)
+# Fill any remaining NaN values
+X = X.fillna(X.mean())
+
+# Ensure X is a DataFrame with clean column names
+if isinstance(X, pd.DataFrame):
+    # Reset column names to generic names to avoid XGBoost issues
+    X.columns = [f'feature_{i}' for i in range(X.shape[1])]
+
+# Convert to numpy array to ensure compatibility with XGBoost
+X = X.values
 
 # --- Train/Test Split ---
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -778,14 +784,30 @@ with tab3:
     # Prepare features for prediction model
     X_upcoming = upcoming_df.drop(columns=['Date', 'Time', 'HomeTeam', 'AwayTeam'], errors='ignore')
     
-    # Fill NA
-    X_upcoming = X_upcoming.fillna(X_upcoming.mean(numeric_only=True))
+    # Apply the same data processing as training
+    # Get numeric features only
+    X_upcoming_numeric = X_upcoming.select_dtypes(include=[np.number])
     
-    # Select numeric
-    X_upcoming = X_upcoming.select_dtypes(include=[np.number])
+    # Handle categorical columns by encoding them
+    cat_cols = X_upcoming.select_dtypes(include=['object']).columns
+    X_upcoming_categorical = pd.DataFrame()
+    for col in cat_cols:
+        le = LabelEncoder()
+        X_upcoming_categorical[col] = le.fit_transform(X_upcoming[col].astype(str))
     
-    # Clean column names
-    X_upcoming.columns = [str(col).replace('[','').replace(']','').replace('<','').replace('>','').replace(' ', '_') for col in X_upcoming.columns]
+    # Combine numeric and categorical features
+    X_upcoming = pd.concat([X_upcoming_numeric, X_upcoming_categorical], axis=1)
+    
+    # Fill any remaining NaN values
+    X_upcoming = X_upcoming.fillna(X_upcoming.mean())
+    
+    # Ensure X is a DataFrame with clean column names
+    if isinstance(X_upcoming, pd.DataFrame):
+        # Reset column names to generic names to match training
+        X_upcoming.columns = [f'feature_{i}' for i in range(X_upcoming.shape[1])]
+    
+    # Convert to numpy array to ensure compatibility with XGBoost
+    X_upcoming = X_upcoming.values
     
     # Model Selection
     st.subheader("🤖 Choose Prediction Model")
