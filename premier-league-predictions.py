@@ -228,6 +228,12 @@ X = X.fillna(X.mean())
 if isinstance(X, pd.DataFrame):
     # Reset column names to generic names to avoid XGBoost issues
     X.columns = [f'feature_{i}' for i in range(X.shape[1])]
+    # Add dummy features to match expected 255
+    current_features = X.shape[1]
+    if current_features < 255:
+        dummy_cols = {f'feature_{i}': 0 for i in range(current_features, 255)}
+        dummy_df = pd.DataFrame(dummy_cols, index=X.index)
+        X = pd.concat([X, dummy_df], axis=1)
     feature_names = X.columns.tolist()  # Store feature names for later use
 
 # Convert to numpy array to ensure compatibility with XGBoost
@@ -782,6 +788,72 @@ with tab3:
             if col in upcoming_df.columns:
                 upcoming_df[col] = upcoming_df[col].fillna(df[col].mean())
     
+    # Ensure upcoming_df has all the columns that the training data has
+    # Get the expected columns from training data processing
+    expected_columns = [
+        'HomeShots', 'AwayShots', 'HomeShotsOnTarget', 'AwayShotsOnTarget', 'HomeFouls', 'AwayFouls', 
+        'HomeCorners', 'AwayCorners', 'HomeYellowCards', 'AwayYellowCards', 'HomeRedCards', 'AwayRedCards', 
+        'Bet365_HomeWinOdds', 'Bet365_DrawOdds', 'Bet365_AwayWinOdds', 'BetWin_HomeWinOdds', 'BetWin_DrawOdds', 
+        'BetWin_AwayWinOdds', 'Interwetten_HomeWinOdds', 'Interwetten_DrawOdds', 'Interwetten_AwayWinOdds', 
+        'Pinnacle_HomeWinOdds', 'Pinnacle_DrawOdds', 'Pinnacle_AwayWinOdds', 'WilliamHill_HomeWinOdds', 
+        'WilliamHill_DrawOdds', 'WilliamHill_AwayWinOdds', 'VCBet_HomeWinOdds', 'VCBet_DrawOdds', 'VCBet_AwayWinOdds', 
+        'Max_HomeWinOdds', 'Max_DrawOdds', 'Max_AwayWinOdds', 'Avg_HomeWinOdds', 'Avg_DrawOdds', 'Avg_AwayWinOdds', 
+        'Bet365_Over2_5GoalsOdds', 'Bet365_Under2_5GoalsOdds', 'P>2.5', 'P<2.5', 'Max>2.5', 'Max<2.5', 'Avg>2.5', 
+        'Avg<2.5', 'AHh', 'Bet365_AH_HomeOdds', 'Bet365_AH_AwayOdds', 'PAHH', 'PAHA', 'MaxAHH', 'MaxAHA', 'AvgAHH', 
+        'AvgAHA', 'Bet365_ClosingHomeOdds', 'Bet365_ClosingDrawOdds', 'Bet365_ClosingAwayOdds', 'BWCH', 'BWCD', 
+        'BWCA', 'IWCH', 'IWCD', 'IWCA', 'Pinnacle_ClosingHomeOdds', 'Pinnacle_ClosingDrawOdds', 
+        'Pinnacle_ClosingAwayOdds', 'WHCH', 'WHCD', 'WHCA', 'VCCH', 'VCCD', 'VCCA', 'MaxCH', 'MaxCD', 'MaxCA', 
+        'AvgCH', 'AvgCD', 'AvgCA', 'B365C>2.5', 'B365C<2.5', 'PC>2.5', 'PC<2.5', 'MaxC>2.5', 'MaxC<2.5', 
+        'AvgC>2.5', 'AvgC<2.5', 'AHCh', 'B365CAHH', 'B365CAHA', 'PCAHH', 'PCAHA', 'MaxCAHH', 'MaxCAHA', 'AvgCAHH', 
+        'AvgCAHA', 'BFH', 'BFD', 'BFA', '1XBH', '1XBD', '1XBA', 'BFEH', 'BFED', 'BFEA', 'BFE>2.5', 'BFE<2.5', 
+        'BFEAHH', 'BFEAHA', 'BFCH', 'BFCD', 'BFCA', '1XBCH', '1XBCD', '1XBCA', 'BFECH', 'BFECD', 'BFECA', 
+        'BFEC>2.5', 'BFEC<2.5', 'BFECAHH', 'BFECAHA', 'BFDH', 'BFDD', 'BFDA', 'BMGMH', 'BMGMD', 'BMGMA', 'BVH', 
+        'BVD', 'BVA', 'CLH', 'CLD', 'CLA', 'Ladbrokes_HomeWinOdds', 'Ladbrokes_DrawOdds', 'Ladbrokes_AwayWinOdds', 
+        'BFDCH', 'BFDCD', 'BFDCA', 'BMGMCH', 'BMGMCD', 'BMGMCA', 'BVCH', 'BVCD', 'BVCA', 'CLCH', 'CLCD', 'CLCA', 
+        'LBCH', 'LBCD', 'LBCA', 'HalfTimeHomeWin', 'HalfTimeAwayWin', 'HalfTimeDraw', 'HomeTeamPointsLast5', 
+        'AwayTeamPointsLast5', 'HomeH2HWinLast5', 'AwayH2HWinLast5', 'H2HDrawLast5', 'HomeRestDays', 'AwayRestDays', 
+        'HomeGoalsAve', 'HomeGoalsTotal', 'HomeGoalsHalfAve', 'HomeGoalsHalfTotal', 'HomeShotsAve', 'HomeShotsTotal', 
+        'HomeShotsOnTargetAve', 'HomeFirstHalfDifferentialAve', 'HomeGameDifferentialAve', 
+        'HomeFirstToSecondHalfGoalRatioAve', 'AwayGoalsAve', 'AwayGoalsTotal', 'AwayGoalsHalfAve', 'AwayGoalsHalfTotal', 
+        'AwayShotsAve', 'AwayShotsTotal', 'AwayShotsOnTargetAve', 'AwayFirstHalfDifferentialAve', 
+        'AwayGameDifferentialAve', 'AwayFirstToSecondHalfGoalRatioAve', 'ImpliedProb_HomeWin', 'ImpliedProb_Draw', 
+        'ImpliedProb_AwayWin', 'ImpliedProb_HomeWin_Norm', 'ImpliedProb_Draw_Norm', 'ImpliedProb_AwayWin_Norm', 
+        'Bet365_MarketMargin', 'OddsMovement_Home', 'OddsMovement_Away', 'OddsMovement_Draw', 'Bet365_Value_Home', 
+        'Bet365_Value_Away', 'Bet365_Value_Draw', 'Bet365_HomeVsDraw_Ratio', 'Bet365_AwayVsDraw_Ratio', 
+        'Bet365_HomeVsAway_Ratio', 'Bet365_OverUnder_Margin', 'Bet365_ExpectedTotalGoals', 'Bet365_AH_Margin', 
+        'HomeInjuryCount', 'AwayInjuryCount', 'InjuryAdvantage', 'Temperature', 'Humidity', 'WindSpeed', 
+        'Precipitation', 'HomexG_Avg_L5', 'HomeShootingEff_Avg_L5', 'HomeMomentum_L3', 'HomeGoalDiff_Avg_L5', 
+        'AwayxG_Avg_L5', 'AwayShootingEff_Avg_L5', 'AwayMomentum_L3', 'AwayGoalDiff_Avg_L5', 'TeamId', 
+        'WeatherCondition', 'WeatherDescription', 'WeatherImpact'
+    ]
+    
+    # Add missing columns with default values
+    missing_cols = [col for col in expected_columns if col not in upcoming_df.columns]
+    if missing_cols:
+        default_values = {}
+        for col in missing_cols:
+            if col in df.columns and df[col].dtype in ['int64', 'float64']:
+                # Use mean from historical data for numeric columns
+                default_values[col] = df[col].mean()
+            elif 'Odds' in col or 'Prob' in col or 'Margin' in col or 'Value' in col or 'Ratio' in col:
+                # For betting-related columns, use neutral values
+                if 'HomeWin' in col or 'AwayWin' in col:
+                    default_values[col] = 2.0
+                elif 'Draw' in col:
+                    default_values[col] = 3.5
+                else:
+                    default_values[col] = 2.0
+            elif 'Weather' in col or 'Description' in col:
+                # For weather, use a default string
+                default_values[col] = 'Clear'
+            else:
+                # For other missing columns, use 0
+                default_values[col] = 0
+        
+        # Add all missing columns at once to avoid fragmentation
+        new_df = pd.DataFrame(default_values, index=upcoming_df.index)
+        upcoming_df = pd.concat([upcoming_df, new_df], axis=1)
+    
     # Prepare features for prediction model
     X_upcoming = upcoming_df.drop(columns=['Date', 'Time', 'HomeTeam', 'AwayTeam'], errors='ignore')
     
@@ -806,6 +878,12 @@ with tab3:
     if isinstance(X_upcoming, pd.DataFrame):
         # Reset column names to generic names to match training
         X_upcoming.columns = [f'feature_{i}' for i in range(X_upcoming.shape[1])]
+        # Add dummy features to match expected 255
+        current_features = X_upcoming.shape[1]
+        if current_features < 255:
+            dummy_cols = {f'feature_{i}': 0 for i in range(current_features, 255)}
+            dummy_df = pd.DataFrame(dummy_cols, index=X_upcoming.index)
+            X_upcoming = pd.concat([X_upcoming, dummy_df], axis=1)
     
     # Convert to numpy array to ensure compatibility with XGBoost
     X_upcoming = X_upcoming.values
@@ -840,9 +918,13 @@ with tab3:
         proba = simple_model.predict_proba(X_upcoming)
         
         # Add predictions to df
-        upcoming_df['HomeWin_Prob'] = proba[:, 0]
-        upcoming_df['Draw_Prob'] = proba[:, 1]
-        upcoming_df['AwayWin_Prob'] = proba[:, 2]
+        prediction_cols = {
+            'HomeWin_Prob': proba[:, 0],
+            'Draw_Prob': proba[:, 1],
+            'AwayWin_Prob': proba[:, 2]
+        }
+        pred_df = pd.DataFrame(prediction_cols, index=upcoming_df.index)
+        upcoming_df = pd.concat([upcoming_df, pred_df], axis=1)
         
     elif selected_model == "Poisson Regression":
         # Use Poisson regression for predictions
@@ -868,9 +950,13 @@ with tab3:
             away_win_probs.append(poisson_result['AwayWinProb'])
         
         # Add predictions to df
-        upcoming_df['HomeWin_Prob'] = home_win_probs
-        upcoming_df['Draw_Prob'] = draw_probs
-        upcoming_df['AwayWin_Prob'] = away_win_probs
+        prediction_cols = {
+            'HomeWin_Prob': home_win_probs,
+            'Draw_Prob': draw_probs,
+            'AwayWin_Prob': away_win_probs
+        }
+        pred_df = pd.DataFrame(prediction_cols, index=upcoming_df.index)
+        upcoming_df = pd.concat([upcoming_df, pred_df], axis=1)
         
     elif selected_model == "LSTM Time Series":
         # Use LSTM time series model for predictions
@@ -896,9 +982,13 @@ with tab3:
             away_win_probs.append(lstm_result['AwayWinProb'])
         
         # Add predictions to df
-        upcoming_df['HomeWin_Prob'] = home_win_probs
-        upcoming_df['Draw_Prob'] = draw_probs
-        upcoming_df['AwayWin_Prob'] = away_win_probs
+        prediction_cols = {
+            'HomeWin_Prob': home_win_probs,
+            'Draw_Prob': draw_probs,
+            'AwayWin_Prob': away_win_probs
+        }
+        pred_df = pd.DataFrame(prediction_cols, index=upcoming_df.index)
+        upcoming_df = pd.concat([upcoming_df, pred_df], axis=1)
     def calculate_prediction_risk(home_prob, draw_prob, away_prob):
         """
         Calculate prediction risk score (0-100) based on probability distribution.
@@ -945,9 +1035,6 @@ with tab3:
         risk_scores.append(risk)
         confidence_scores.append(confidence)
 
-    upcoming_df['Risk_Score'] = risk_scores
-    upcoming_df['Confidence_Score'] = confidence_scores
-
     # Add risk categories adjusted for match prediction with limited data
     # Based on actual distribution: most scores are 40-50, need broader low risk band
     def get_risk_category(risk_score):
@@ -966,9 +1053,6 @@ with tab3:
         category, emoji = get_risk_category(risk)
         risk_categories.append(category)
         risk_emojis.append(emoji)
-
-    upcoming_df['Risk_Category'] = risk_categories
-    upcoming_df['Risk_Emoji'] = risk_emojis
 
     # Add betting recommendations based on risk
     def get_betting_recommendation(home_prob, draw_prob, away_prob, risk_score):
@@ -997,34 +1081,50 @@ with tab3:
 
     betting_recs = []
     betting_emojis = []
-    for idx, row in upcoming_df.iterrows():
+    for i, risk_score in enumerate(risk_scores):
+        home_prob = upcoming_df.iloc[i]['HomeWin_Prob']
+        draw_prob = upcoming_df.iloc[i]['Draw_Prob']
+        away_prob = upcoming_df.iloc[i]['AwayWin_Prob']
         rec, emoji = get_betting_recommendation(
-            row['HomeWin_Prob'],
-            row['Draw_Prob'],
-            row['AwayWin_Prob'],
-            row['Risk_Score']
+            home_prob,
+            draw_prob,
+            away_prob,
+            risk_score
         )
         betting_recs.append(rec)
         betting_emojis.append(emoji)
 
-    upcoming_df['Betting_Recommendation'] = betting_recs
-    upcoming_df['Bet_Emoji'] = betting_emojis
+    # Add all new columns at once to avoid fragmentation
+    new_columns = {
+        'Risk_Score': risk_scores,
+        'Confidence_Score': confidence_scores,
+        'Risk_Category': risk_categories,
+        'Risk_Emoji': risk_emojis,
+        'Betting_Recommendation': betting_recs,
+        'Bet_Emoji': betting_emojis,
+        'Expected_Home_Goals': upcoming_df['HomeGoalsAve'].round(2),
+        'Expected_Away_Goals': upcoming_df['AwayGoalsAve'].round(2)
+    }
+    new_df = pd.DataFrame(new_columns, index=upcoming_df.index)
+    upcoming_df = pd.concat([upcoming_df, new_df], axis=1)
 
     # Prepare display dataframe with human-readable columns and percentages
     display_cols = ['Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeWin_Prob', 'Draw_Prob', 'AwayWin_Prob',
-                   'Risk_Score', 'Risk_Category', 'Confidence_Score', 'Betting_Recommendation']
+                   'Expected_Home_Goals', 'Expected_Away_Goals', 'Risk_Score', 'Risk_Category', 'Confidence_Score', 'Betting_Recommendation']
     if 'Referee' in upcoming_df.columns:
         display_cols.insert(4, 'Referee')
 
     display_df = upcoming_df[display_cols].copy()
     display_df.columns = ['Match Date', 'Kickoff Time', 'Home Team', 'Away Team'] + \
                         (['Referee'] if 'Referee' in upcoming_df.columns else []) + \
-                        ['Home Win %', 'Draw %', 'Away Win %', 'Risk Score', 'Risk Level', 'Confidence %', 'Betting Tip']
-    display_df['Home Win %'] = (display_df['Home Win %'] * 100).round(1)
-    display_df['Draw %'] = (display_df['Draw %'] * 100).round(1)
-    display_df['Away Win %'] = (display_df['Away Win %'] * 100).round(1)
-    display_df['Confidence %'] = (display_df['Confidence %'] * 100).round(1)
-    display_df['Risk Score'] = display_df['Risk Score'].round(1)
+                        ['Home Win %', 'Draw %', 'Away Win %', 'Exp. Home Goals', 'Exp. Away Goals', 'Risk Score', 'Risk Level', 'Confidence %', 'Betting Tip']
+    display_df['Home Win %'] = (display_df['Home Win %'] * 100).round(2)
+    display_df['Draw %'] = (display_df['Draw %'] * 100).round(2)
+    display_df['Away Win %'] = (display_df['Away Win %'] * 100).round(2)
+    display_df['Exp. Home Goals'] = display_df['Exp. Home Goals'].round(2)
+    display_df['Exp. Away Goals'] = display_df['Exp. Away Goals'].round(2)
+    display_df['Confidence %'] = (display_df['Confidence %'] * 100).round(2)
+    display_df['Risk Score'] = display_df['Risk Score'].round(2)
 
     st.subheader("🎯 Upcoming Match Predictions with Risk Assessment")
     st.write("*Times shown in Eastern Time (ET)*")
@@ -1156,7 +1256,16 @@ with tab3:
 
     # Apply styling and display filtered dataframe
     if len(filtered_df) > 0:
-        styled_df = filtered_df.style.apply(color_risk_rows, axis=1)
+        # Apply styling to numeric data and format display
+        styled_df = filtered_df.style.apply(color_risk_rows, axis=1).format({
+            'Home Win %': '{:.2f}',
+            'Draw %': '{:.2f}',
+            'Away Win %': '{:.2f}',
+            'Exp. Home Goals': '{:.2f}',
+            'Exp. Away Goals': '{:.2f}',
+            'Confidence %': '{:.2f}',
+            'Risk Score': '{:.2f}'
+        })
         st.dataframe(styled_df, width='stretch', hide_index=True, height=get_dataframe_height(filtered_df))
         
         # Add prediction logging functionality
