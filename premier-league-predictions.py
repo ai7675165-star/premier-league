@@ -228,6 +228,7 @@ X = X.fillna(X.mean())
 if isinstance(X, pd.DataFrame):
     # Reset column names to generic names to avoid XGBoost issues
     X.columns = [f'feature_{i}' for i in range(X.shape[1])]
+    feature_names = X.columns.tolist()  # Store feature names for later use
 
 # Convert to numpy array to ensure compatibility with XGBoost
 X = X.values
@@ -509,7 +510,7 @@ with tab2:
     
     if st.button("Calculate Feature Importance", key="calc_importance"):
         with st.spinner("Calculating feature importance... This may take a moment."):
-            importance_df = calculate_feature_importance(model, X_test, y_test, X_train.columns)
+            importance_df = calculate_feature_importance(model, X_test, y_test, feature_names)
             st.session_state['importance_df'] = importance_df
     
     # Display results if importance_df is available (either just calculated or from session state)
@@ -826,9 +827,9 @@ with tab3:
     
     st.info(f"📊 **{selected_model}**: {model_options[selected_model]}")
     
-    # Filter historical data to same features
-    available_features = X_upcoming.columns.tolist()
-    X_simple = X[available_features]
+    # Filter historical data to same features (both datasets now have same generic column names)
+    # Since both X and X_upcoming are processed identically, they have the same features
+    X_simple = X  # Use all features since they're aligned
 
     if selected_model == "Simple Ensemble":
         # Train simple ensemble model
