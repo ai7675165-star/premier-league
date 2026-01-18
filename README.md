@@ -122,20 +122,3 @@ Notes for developers
 If you reuse data or publish results, please credit the original data sources.
 
 [Back to top](#premier-league-predictor)
-
---
-
-## Contributing
-
-If you want to contribute: fork the repo, create a feature branch, and open a pull request. See the `docs/` folder for suggested tasks and code snippets.
-
-[Back to top](#premier-league-predictor)
-
---
-
-## License
-
-This repository does not include a license file. Add one if you plan to share or publish the code.
-
-[Back to top](#premier-league-predictor)
-# test
