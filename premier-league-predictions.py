@@ -335,7 +335,7 @@ with tab1:
         st.subheader("Upcoming Premier League Matches")
         st.write(f"Found {len(upcoming_df)} upcoming matches")
         st.write("*Times shown in Eastern Time (ET)*")
-        st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width='stretch', hide_index=True)
+        st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width=600, hide_index=True)
 
 with tab2:
     st.subheader("Model Performance Comparison")
@@ -485,7 +485,7 @@ with tab2:
     else:
         styled_df = styled_df.apply(lambda x: ['background-color: #d4edda' if x.name == 'Ensemble (Current)' else '' for i in x], axis=1)
 
-    st.dataframe(styled_df)
+    st.dataframe(styled_df, hide_index=True, height=get_dataframe_height(styled_df.data), width=600)
 
     # Performance interpretation
     mae_improvement = xgb_mae - ensemble_mae
@@ -1388,7 +1388,7 @@ with tab4:
     }
     
     summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
-    st.dataframe(summary_df, width='stretch', hide_index=True)
+    st.dataframe(summary_df, width=600, hide_index=True, height=get_dataframe_height(summary_df))
 
     st.markdown("---")
     st.subheader("Manager Statistics")
@@ -1425,7 +1425,7 @@ with tab4:
     st.write("- **Attacking Threat**: Rating of offensive capability (higher = more dangerous attack)")
     st.write("- **Tactical Flexibility**: Rating of adaptability to different tactical situations")
     
-    st.dataframe(manager_stats_df, width='stretch', hide_index=True, height=get_dataframe_height(manager_stats_df))
+    st.dataframe(manager_stats_df, width=800, hide_index=True, height=get_dataframe_height(manager_stats_df))
     
     # Add summary statistics
     st.subheader("Manager Summary Statistics")
@@ -1462,7 +1462,7 @@ with tab4:
         if col in summary_display.columns:
             summary_display[col] = summary_display[col].round(2)
     
-    st.dataframe(summary_display, width='stretch', hide_index=True)
+    st.dataframe(summary_display, width=600, hide_index=True)
     
     st.subheader("Referee Statistics")
     st.write("Historical referee performance metrics calculated from Premier League matches (2021-2026)")
@@ -1611,7 +1611,7 @@ with tab4:
     }
     
     summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
-    st.dataframe(summary_df, width='stretch', hide_index=True)
+    st.dataframe(summary_df, width=600, hide_index=True, height=get_dataframe_height(summary_df))
 
     st.markdown("---")
     st.subheader("🏆 Head-to-Head Analyzer")
@@ -1718,4 +1718,8 @@ with tab5:
     st.subheader("Historical Data")
     df_sorted = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
     st.dataframe(df_sorted, height=get_dataframe_height(df_sorted), width='stretch', hide_index=True)
+
+# Add footer at the bottom of the page
+from footer import add_betting_oracle_footer
+add_betting_oracle_footer()
 
