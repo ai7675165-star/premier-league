@@ -18,6 +18,7 @@ from models.neural_predictor import train_neural_model, predict_neural
 from models.poisson_predictor import predict_match_poisson
 from models.lstm_predictor import predict_match_lstm
 from optimize_model import optimize_xgboost
+from footer import add_betting_oracle_footer
 
 DATA_DIR = 'data_files/'
 
@@ -336,6 +337,8 @@ with tab1:
         st.write(f"Found {len(upcoming_df)} upcoming matches")
         st.write("*Times shown in Eastern Time (ET)*")
         st.dataframe(upcoming_df, height=get_dataframe_height(upcoming_df), width=600, hide_index=True)
+    
+    add_betting_oracle_footer()
 
 with tab2:
     st.subheader("Model Performance Comparison")
@@ -715,6 +718,8 @@ with tab2:
                 st.info("No predictions have been validated yet. Predictions will be validated after match results are available.")
         else:
             st.info("No prediction history found. Start making predictions to track performance over time.")
+    
+    add_betting_oracle_footer()
 
 with tab3:
     # Load upcoming fixtures
@@ -1313,6 +1318,8 @@ with tab3:
                     
     else:
         st.info("No matches found for the selected risk level. Try selecting 'All Matches' or a different risk category.")
+    
+    add_betting_oracle_footer()
 
 with tab4:
     st.subheader("📊 Team Form Guide")
@@ -1713,13 +1720,13 @@ with tab4:
                 st.warning(f"No historical matches found between {team1} and {team2}")
         else:
             st.warning("Please select two different teams to compare")
+    
+    add_betting_oracle_footer()
 
 with tab5:
     st.subheader("Historical Data")
     df_sorted = df.sort_values(by=['MatchDate', 'KickoffTime'], ascending=[False, False])
     st.dataframe(df_sorted, height=get_dataframe_height(df_sorted), width='stretch', hide_index=True)
-
-# Add footer at the bottom of the page
-from footer import add_betting_oracle_footer
-add_betting_oracle_footer()
+    
+    add_betting_oracle_footer()
 
