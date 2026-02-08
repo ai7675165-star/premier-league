@@ -2,7 +2,7 @@ beautifulsoup4
 numpy
 pandas
 requests
-scikit-learn
+scikit-learn>=1.8.0
 streamlit>=1.51.0
 xgboost
 plotly
@@ -21,3 +21,5 @@ requests-cache
 retry-requests
 reportlab
 seaborn
+mlflow-skinny>=3.8.1
+mlflow-tracing>=3.8.1

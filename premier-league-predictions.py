@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import pickle
+import warnings
 from os import path
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
@@ -11,6 +12,10 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.inspection import permutation_importance
 from scipy import stats
 from datetime import datetime
+
+# Suppress XGBoost serialization warnings (models are retrained nightly)
+warnings.filterwarnings('ignore', message='.*If you are loading a serialized model.*')
+warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
 from team_name_mapping import normalize_team_name
 from generate_pdf_report import generate_statistical_report, generate_quick_report
 from models.ensemble_predictor import create_ensemble_model, create_simple_ensemble
@@ -1394,7 +1399,9 @@ with tab4:
         'Teams Winless': len(form_df[form_df['Wins'] == 0])
     }
     
-    summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
+    summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'], dtype=object)
+    summary_df['Value'] = summary_df['Value'].astype(str)
+    summary_df = summary_df.astype(str)
     st.dataframe(summary_df, width=600, hide_index=True, height=get_dataframe_height(summary_df))
 
     st.markdown("---")
@@ -1617,7 +1624,9 @@ with tab4:
         'Average Away Win Rate': f"{formation_df['Away Win Rate'].mean():.1f}%"
     }
     
-    summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'])
+    summary_df = pd.DataFrame(list(summary_stats.items()), columns=['Metric', 'Value'], dtype=object)
+    summary_df['Value'] = summary_df['Value'].astype(str)
+    summary_df = summary_df.astype(str)
     st.dataframe(summary_df, width=600, hide_index=True, height=get_dataframe_height(summary_df))
 
     st.markdown("---")
