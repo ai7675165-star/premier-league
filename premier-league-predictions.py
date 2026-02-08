@@ -29,8 +29,17 @@ DATA_DIR = 'data_files/'
 
 st.set_page_config(page_title="Pitch Oracle - Premier League Historical Data", layout="wide", page_icon="⚽")
 
+# Add cache status indicator
+if 'app_load_count' not in st.session_state:
+    st.session_state.app_load_count = 0
+st.session_state.app_load_count += 1
+
 st.image(path.join(DATA_DIR, 'logo.png'), width=250)
 st.title("Premier League Predictor")
+
+# Show cache status
+# if st.session_state.app_load_count > 1:
+#     st.success("⚡ Using cached data and models for instant loading!", icon="🚀")
 
 # Show last update timestamp for fixtures data
 fixtures_file = path.join(DATA_DIR, 'upcoming_fixtures.csv')
@@ -68,10 +77,36 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
         return min(calculated_height, max_height)
     return calculated_height
 
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def load_precomputed_data():
+    """
+    Load precomputed data for fast app startup.
+    Falls back to processing data if precomputed file doesn't exist.
+    
+    Cached to avoid repeated disk I/O.
+    """
+    precomputed_path = 'precomputed/preprocessed_data.pkl'
+
+    if path.exists(precomputed_path):
+        try:
+            with open(precomputed_path, 'rb') as f:
+                data = pickle.load(f)
+            print("✅ Loaded precomputed data for fast startup")
+            return data
+        except Exception as e:
+            print(f"⚠️  Could not load precomputed data: {e}")
+            print("Falling back to real-time processing...")
+
+    return None
+
+@st.cache_resource  # Cache models in memory (they're not serializable)
 def load_pretrained_models():
     """
     Load pre-trained models from the nightly pipeline.
     Falls back to training if models don't exist.
+    
+    Cached as a resource since ML models can't be serialized by Streamlit.
+    This dramatically speeds up app loading on subsequent visits.
     """
     models_dir = 'models/'
     performance = {}
@@ -140,12 +175,13 @@ def load_pretrained_models():
         print("Falling back to on-demand training...")
         return None
 
-def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats=5):
+@st.cache_data(ttl=3600)  # Cache for 1 hour (expensive calculation)
+def calculate_feature_importance(_model, X_test, y_test, feature_names, n_repeats=5):
     """
     Calculate permutation feature importance for the model with statistical significance testing.
     
     Args:
-        model: Trained model
+        _model: Trained model (underscore prefix prevents hashing)
         X_test: Test features
         y_test: Test targets
         feature_names: List of feature names
@@ -153,8 +189,10 @@ def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats
     
     Returns:
         pd.DataFrame: Feature importance results with statistical significance
+    
+    Note: Cached because permutation importance is computationally expensive.
     """
-    result = permutation_importance(model, X_test, y_test, n_repeats=n_repeats, random_state=42, scoring='accuracy')
+    result = permutation_importance(_model, X_test, y_test, n_repeats=n_repeats, random_state=42, scoring='accuracy')
     
     importance_df = pd.DataFrame({
         'Feature': feature_names,
@@ -187,66 +225,111 @@ def calculate_feature_importance(model, X_test, y_test, feature_names, n_repeats
     importance_df = importance_df.sort_values('Importance', ascending=False)
     return importance_df
 
+@st.cache_data(ttl=3600)  # Cache processed data for 1 hour
+def load_and_process_data(csv_path):
+    """
+    Load CSV data and process it for ML model training.
+    
+    This function is cached to avoid re-processing the CSV file on every app reload.
+    Processing includes:
+    - Loading CSV
+    - Target encoding
+    - Feature engineering
+    - Train/test split
+    
+    Args:
+        csv_path: Path to the CSV file
+        
+    Returns:
+        tuple: (X_train, X_test, y_train, y_test, feature_names, df)
+    """
+    # Try to load precomputed data first (fastest path)
+    print("Loading precomputed data...")
+    precomputed_data = load_precomputed_data()
+
+    if precomputed_data:
+        # Use precomputed data
+        X_train = precomputed_data['X_train']
+        X_test = precomputed_data['X_test']
+        y_train = precomputed_data['y_train']
+        y_test = precomputed_data['y_test']
+        feature_names = precomputed_data['feature_names']
+        # For df, we'll load the  CSV (still faster than full processing)
+        df = pd.read_csv(csv_path, sep='\t')
+        
+        print("✅ Using precomputed data for instant loading")
+        return X_train, X_test, y_train, y_test, feature_names, df
+    
+    # Fallback: Process data in real-time (but cached after first run)
+    print("Processing data in real-time (will be cached)...")
+    df = pd.read_csv(csv_path, sep='\t')
+    
+    # Data preparation
+    target_map = {'H': 0, 'D': 1, 'A': 2}
+    df = df[df['FullTimeResult'].isin(target_map.keys())].copy()
+    df['target'] = df['FullTimeResult'].map(target_map)
+
+    # Drop columns not useful for modeling or that leak the result
+    drop_cols = [
+        'FullTimeResult', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
+        'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals',
+        'HomeWin', 'AwayWin', 'Draw', 'WinningTeam',
+        'HomePoints', 'AwayPoints', 'HomeTeamCumulativePoints', 'AwayTeamCumulativePoints',
+        'MatchDate', 'KickoffTime', 'Season', 'Round', 'Venue', 'Referee',
+        'HomeTeam', 'AwayTeam', 'Division'
+    ]
+    X = df.drop(columns=[col for col in drop_cols if col in df.columns] + ['target'], errors='ignore')
+    y = df['target']
+
+    # Get numeric features only
+    X_numeric = X.select_dtypes(include=[np.number]).drop(columns=drop_cols, errors='ignore')
+
+    # Handle categorical columns by encoding them
+    cat_cols = X.select_dtypes(include=['object']).columns
+    X_categorical = pd.DataFrame()
+    for col in cat_cols:
+        if col not in drop_cols:
+            le = LabelEncoder()
+            X_categorical[col] = le.fit_transform(X[col].astype(str))
+
+    # Combine numeric and categorical features
+    X = pd.concat([X_numeric, X_categorical], axis=1)
+
+    # Fill any remaining NaN values
+    X = X.fillna(X.mean())
+
+    # Ensure X is a DataFrame with clean column names
+    if isinstance(X, pd.DataFrame):
+        # Reset column names to generic names to avoid XGBoost issues
+        X.columns = [f'feature_{i}' for i in range(X.shape[1])]
+        # Add dummy features to match expected 255
+        current_features = X.shape[1]
+        if current_features < 255:
+            dummy_cols = {f'feature_{i}': 0 for i in range(current_features, 255)}
+            dummy_df = pd.DataFrame(dummy_cols, index=X.index)
+            X = pd.concat([X, dummy_df], axis=1)
+        feature_names = X.columns.tolist()  # Store feature names for later use
+
+    # Convert to numpy array to ensure compatibility with XGBoost
+    X = X.values
+
+    # --- Train/Test Split ---
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    
+    print("✅ Data processed and cached")
+    return X_train, X_test, y_train, y_test, feature_names, df
+
+
 if not path.exists(csv_path):
     st.warning(f"No historical data file found at `{csv_path}`. Please add your CSV file to get started.")
     st.stop()
 
-df = pd.read_csv(csv_path, sep='\t')
+# Load and process data (cached after first run)
+X_train, X_test, y_train, y_test, feature_names, df = load_and_process_data(csv_path)
 
-# Data preparation (run for both predictive tabs)
-# --- Data Preparation ---
-# Assume columns: HomeTeam, AwayTeam, FullTimeResult, plus features
-# Encode target: 0 = HomeWin, 1 = Draw, 2 = AwayWin
-target_map = {'H': 0, 'D': 1, 'A': 2}
-df = df[df['FullTimeResult'].isin(target_map.keys())].copy()
-df['target'] = df['FullTimeResult'].map(target_map)
-
-# Drop columns not useful for modeling or that leak the result
-drop_cols = [
-    'FullTimeResult', 'FullTimeHomeGoals', 'FullTimeAwayGoals',
-    'HalfTimeResult', 'HalfTimeHomeGoals', 'HalfTimeAwayGoals',
-    'HomeWin', 'AwayWin', 'Draw', 'WinningTeam',
-    'HomePoints', 'AwayPoints', 'HomeTeamCumulativePoints', 'AwayTeamCumulativePoints',
-    'MatchDate', 'KickoffTime', 'Season', 'Round', 'Venue', 'Referee',
-    'HomeTeam', 'AwayTeam', 'Division'
-]
-X = df.drop(columns=[col for col in drop_cols if col in df.columns] + ['target'], errors='ignore')
-y = df['target']
-
-# Get numeric features only
-X_numeric = X.select_dtypes(include=[np.number]).drop(columns=drop_cols, errors='ignore')
-
-# Handle categorical columns by encoding them
-cat_cols = X.select_dtypes(include=['object']).columns
-X_categorical = pd.DataFrame()
-for col in cat_cols:
-    if col not in drop_cols:
-        le = LabelEncoder()
-        X_categorical[col] = le.fit_transform(X[col].astype(str))
-
-# Combine numeric and categorical features
-X = pd.concat([X_numeric, X_categorical], axis=1)
-
-# Fill any remaining NaN values
-X = X.fillna(X.mean())
-
-# Ensure X is a DataFrame with clean column names
-if isinstance(X, pd.DataFrame):
-    # Reset column names to generic names to avoid XGBoost issues
-    X.columns = [f'feature_{i}' for i in range(X.shape[1])]
-    # Add dummy features to match expected 255
-    current_features = X.shape[1]
-    if current_features < 255:
-        dummy_cols = {f'feature_{i}': 0 for i in range(current_features, 255)}
-        dummy_df = pd.DataFrame(dummy_cols, index=X.index)
-        X = pd.concat([X, dummy_df], axis=1)
-    feature_names = X.columns.tolist()  # Store feature names for later use
-
-# Convert to numpy array to ensure compatibility with XGBoost
-X = X.values
-
-# --- Train/Test Split ---
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+# Reconstruct full datasets for parts of the app that need them
+X = np.concatenate([X_train, X_test])
+y = np.concatenate([y_train, y_test])
 
 # --- Load Pre-trained Models or Train Fresh ---
 print("Loading pre-trained models...")
