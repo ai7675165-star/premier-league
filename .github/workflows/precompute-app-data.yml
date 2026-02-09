@@ -61,7 +61,7 @@ jobs:
         continue-on-error: true  # Don't fail if no changes
 
       - name: Upload precomputed data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: precomputed-data
           path: precomputed/
