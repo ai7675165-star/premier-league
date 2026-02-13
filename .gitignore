@@ -71,3 +71,6 @@ premier-league.code-workspace
 
 # Copilot instructions (local guidance)
 copilot-instructions.md
+
+tmp_playwright_test/*
+pr_body.txt
