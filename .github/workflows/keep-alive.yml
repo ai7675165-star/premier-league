@@ -28,7 +28,7 @@ env:
 jobs:
   ping-app:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Allow for 10-minute random delay + ping time
+    timeout-minutes: 25  # Allow for 10-minute random delay + ping time + browser installation
 
     steps:
       - name: Random delay (0-10 minutes)
@@ -117,7 +117,7 @@ jobs:
         run: |
           npm init -y
           npm i playwright --silent --no-audit --no-fund
-          npx playwright install --with-deps
+          npx playwright install chromium --with-deps
 
       - name: Run headless browser to open the app
         if: ${{ !startsWith(steps.ping.outputs.response, '2') }}
